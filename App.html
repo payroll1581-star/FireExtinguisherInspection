@@ -1,0 +1,1092 @@
+<script>
+/* App.html — ฝั่งหน้าเว็บ (Single Page App) ของระบบตรวจถังดับเพลิง */
+(function () {
+  'use strict';
+
+  var D = document.body.dataset;
+  var LS = {
+    TOKEN: 'fe_token', EXP: 'fe_exp', USER: 'fe_user', LAST_USER: 'fe_last_user',
+    CACHE: 'fe_cache', QUEUE: 'fe_queue', FAILED: 'fe_failed',
+  };
+  var ID_RE = /^[A-Z0-9][A-Z0-9_-]{0,39}$/;
+  var STATUS_TEXT = { NORMAL: 'ปกติ', DAMAGED: 'ชำรุด', PENDING: 'รอการตรวจ' };
+  var STATUS_ICON = { NORMAL: 'check', DAMAGED: 'alert', PENDING: 'clock', all: 'ext' };
+  var EXPIRY_TEXT = { EXPIRED: 'หมดอายุ', SOON: 'ใกล้หมดอายุ' };
+  var EXPIRY_ICON = { EXPIRED: 'ban', SOON: 'hourglass' };
+  var QR_LIB = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+
+  var state = {
+    token: null, user: null, cache: null, view: '',
+    current: null, scanner: null, scanLocked: false,
+    dash: null, dashFilter: { building: '', floor: '', list: 'problem' },
+    log: null, flushing: false,
+    initialId: D.initialId || '', initialView: D.initialView || '',
+  };
+
+  /* ============================== Utilities ============================== */
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s === null || s === undefined ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function ico(name, cls) {
+    return '<svg class="i' + (cls ? ' ' + cls : '') + '" aria-hidden="true"><use href="#i-' + name + '"/></svg>';
+  }
+  function lsGet(k, fallback) {
+    try { var v = localStorage.getItem(k); return v === null ? fallback : JSON.parse(v); } catch (e) { return fallback; }
+  }
+  function lsSet(k, v) {
+    try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; }
+  }
+  function lsDel(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } }
+  function isAdmin() { return !!(state.user && state.user.role === 'ADMIN'); }
+
+  function uuid() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    var b = new Uint8Array(16);
+    crypto.getRandomValues(b);
+    b[6] = (b[6] & 0x0f) | 0x40;
+    b[8] = (b[8] & 0x3f) | 0x80;
+    var h = Array.prototype.map.call(b, function (x) { return ('0' + x.toString(16)).slice(-2); }).join('');
+    return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' + h.slice(16, 20) + '-' + h.slice(20);
+  }
+
+  var fmtDate = new Intl.DateTimeFormat('th-TH-u-ca-buddhist-nu-latn', { timeZone: 'Asia/Bangkok', day: '2-digit', month: '2-digit', year: 'numeric' });
+  var fmtTime = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit', hour12: false });
+  function fmtDateTime(iso) {
+    var d = new Date(iso);
+    return isNaN(d.getTime()) ? '-' : fmtDate.format(d) + ' ' + fmtTime.format(d) + ' น.';
+  }
+  function fmtYmd(ymd) {
+    if (!ymd) return '-';
+    var p = ymd.split('-');
+    return p[2] + '/' + p[1] + '/' + (Number(p[0]) + 543);
+  }
+  function currentYm() { return new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 7); }
+  function daysText(n) {
+    if (n < 0) return 'เลยกำหนด ' + (-n) + ' วัน';
+    if (n === 0) return 'ครบกำหนดวันนี้';
+    return 'อีก ' + n + ' วัน';
+  }
+  function locText(it) {
+    return [it.building, it.floor ? 'ชั้น ' + it.floor : '', it.location].filter(Boolean).join(' · ');
+  }
+  function naturalCmp(a, b) { return String(a).localeCompare(String(b), 'th', { numeric: true }); }
+
+  /* ============================== UI helpers ============================== */
+
+  var toastTimer = null;
+  function toast(msg, ms) {
+    var el = $('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove('show'); }, ms || 3200);
+  }
+  function loading(on, text) {
+    $('loading').hidden = !on;
+    if (text) $('loading-text').textContent = text;
+  }
+  var modalReturnFocus = null;
+  function openModal(title, html) {
+    modalReturnFocus = document.activeElement;
+    $('modal-title').textContent = title;
+    $('modal-body').innerHTML = html;
+    $('modal').hidden = false;
+    $('modal-close').focus();
+  }
+  function closeModal() {
+    $('modal').hidden = true;
+    $('modal-body').innerHTML = '';
+    if (modalReturnFocus && document.body.contains(modalReturnFocus)) { try { modalReturnFocus.focus({ preventScroll: true }); } catch (e) { /* ignore */ } }
+    modalReturnFocus = null;
+  }
+  function onModalKey(e) {
+    if ($('modal').hidden) return;
+    if (e.key === 'Escape') { closeModal(); return; }
+    if (e.key !== 'Tab') return;
+    var f = $('modal').querySelectorAll('button:not([disabled]), a[href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])');
+    if (!f.length) return;
+    var first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+
+  function statusChip(st) { return '<span class="chip ' + esc(st) + '">' + ico(STATUS_ICON[st] || 'check') + esc(STATUS_TEXT[st] || st) + '</span>'; }
+  function expiryChip(it) { return EXPIRY_TEXT[it.expiry] ? '<span class="chip ' + esc(it.expiry) + '">' + ico(EXPIRY_ICON[it.expiry]) + EXPIRY_TEXT[it.expiry] + '</span>' : ''; }
+  function expiryDetailsHtml(it) {
+    if (!it.expiryDetails || !it.expiryDetails.length) return '';
+    return '<div class="muted small" style="margin-top:8px">' + it.expiryDetails.map(function (d) {
+      var label = d.kind === 'service' ? 'บำรุงรักษา' : 'หมดอายุ/ทดสอบแรงดัน';
+      var style = d.daysLeft < 0 ? ' class="hl"' : '';
+      return label + ': ' + fmtYmd(d.date) + ' <span' + style + '>(' + daysText(d.daysLeft) + ')</span>';
+    }).join('<br>') + '</div>';
+  }
+
+  /* ============================== Server ============================== */
+
+  function appErr(code, msg) { var e = new Error(msg || 'เกิดข้อผิดพลาด'); e.code = code; return e; }
+
+  function call(action, payload) {
+    return new Promise(function (resolve, reject) {
+      if (!window.google || !google.script || !google.script.run) {
+        reject(appErr('NETWORK', 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้'));
+        return;
+      }
+      google.script.run
+        .withSuccessHandler(function (res) {
+          if (!res) return reject(appErr('ERROR', 'ไม่ได้รับข้อมูลจากเซิร์ฟเวอร์'));
+          if (res.ok) return resolve(res.data);
+          if (res.code === 'AUTH') handleAuthExpired();
+          reject(appErr(res.code, res.error));
+        })
+        .withFailureHandler(function (err) {
+          // api() ไม่ throw ออกมา ดังนั้น failure = เครือข่าย/หมดเวลา → ถือเป็นออฟไลน์
+          var e = appErr('NETWORK', 'เชื่อมต่อไม่ได้ — ตรวจสอบสัญญาณอินเทอร์เน็ต');
+          e.detail = err && err.message;
+          reject(e);
+        })
+        .api(action, state.token || '', payload || {});
+    });
+  }
+
+  /* ============================== Network / environment ============================== */
+
+  function updateNet() {
+    var on = navigator.onLine !== false;
+    $('net-dot').classList.toggle('off', !on);
+    $('offline-banner').hidden = on;
+    if (on) flushQueue();
+  }
+
+  function detectInApp() {
+    var ua = navigator.userAgent || '';
+    if (/\bLine\/|FBAN|FBAV|FB_IAB|Instagram|MicroMessenger|; wv\)/i.test(ua)) $('inapp-banner').hidden = false;
+  }
+
+  /* ============================== Navigation ============================== */
+
+  var NAV_OF = { home: 'home', scan: 'home', inspect: 'home', done: 'home', dashboard: 'dashboard', log: 'log' };
+
+  function show(view) {
+    if (state.view === 'scan' && view !== 'scan') stopScanner();
+    state.view = view;
+    document.body.setAttribute('data-view', view);
+    Array.prototype.forEach.call(document.querySelectorAll('.view'), function (v) { v.hidden = v.id !== 'view-' + view; });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-nav]'), function (b) {
+      var on = b.getAttribute('data-nav') === NAV_OF[view];
+      b.classList.toggle('active', on);
+      if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+    });
+    $('bottomnav').hidden = !state.token || view === 'login';
+    window.scrollTo(0, 0);
+    var hd = view === 'login' ? null : document.querySelector('#view-' + view + ' h2, #view-' + view + ' .tank-id');
+    if (hd) { hd.setAttribute('tabindex', '-1'); try { hd.focus({ preventScroll: true }); } catch (e) { /* ignore */ } }
+  }
+
+  function confirmLeaveInspect() {
+    var c = state.current;
+    if (state.view === 'inspect' && c && Object.keys(c.answers).length) {
+      return window.confirm('ยังไม่ได้บันทึกผลตรวจ ต้องการยกเลิกการตรวจถัง ' + c.item.id + ' หรือไม่?');
+    }
+    return true;
+  }
+
+  function onNav(target) {
+    if (!confirmLeaveInspect()) return;
+    if (target === 'home') { renderHome(); show('home'); }
+    else if (target === 'dashboard') showDashboard();
+    else if (target === 'log') showLog();
+    else if (target === 'logout') logout();
+  }
+
+  function updateChrome() {
+    var u = state.user;
+    $('brand-name').textContent = ((state.cache && state.cache.config && state.cache.config.orgName) || D.appName || 'ตรวจถังดับเพลิง');
+    $('user-chip').hidden = !u;
+    if (u) $('user-chip').innerHTML = ico(u.role === 'ADMIN' ? 'shield' : 'user') + '<span>' + esc(u.name) + '</span>';
+    Array.prototype.forEach.call(document.querySelectorAll('[data-admin]'), function (el) { el.hidden = !isAdmin(); });
+    $('home-admin').hidden = !isAdmin();
+  }
+
+  /* ============================== Auth ============================== */
+
+  function showLogin(message) {
+    show('login');
+    $('login-msg').textContent = message || '';
+    $('login-pin').value = '';
+    var sel = $('login-user');
+    sel.innerHTML = '<option value="">กำลังโหลดรายชื่อ...</option>';
+    call('listUsers').then(function (users) {
+      var last = lsGet(LS.LAST_USER, '');
+      sel.innerHTML = '<option value="">— เลือกชื่อของคุณ —</option>' + users.map(function (u) {
+        return '<option value="' + esc(u.id) + '"' + (u.id === last ? ' selected' : '') + '>' + esc(u.name) + '</option>';
+      }).join('');
+      if (!users.length) $('login-msg').textContent = 'ยังไม่มีผู้ใช้ในระบบ — ผู้ดูแลต้องเพิ่มผู้ใช้จากเมนูใน Google Sheet';
+    }).catch(function (e) {
+      sel.innerHTML = '<option value="">(โหลดรายชื่อไม่ได้)</option>';
+      $('login-msg').textContent = e.code === 'NETWORK' ? 'ต้องเชื่อมต่ออินเทอร์เน็ตเพื่อเข้าสู่ระบบ' : e.message;
+    });
+  }
+
+  function doLogin() {
+    var userId = $('login-user').value;
+    var pin = $('login-pin').value.trim();
+    if (!userId) { $('login-msg').textContent = 'กรุณาเลือกชื่อผู้ใช้'; return; }
+    if (!/^\d{4,6}$/.test(pin)) { $('login-msg').textContent = 'PIN ต้องเป็นตัวเลข 4–6 หลัก'; return; }
+    var btn = $('login-btn');
+    btn.disabled = true;
+    btn.textContent = 'กำลังตรวจสอบ...';
+    call('login', { userId: userId, pin: pin }).then(function (res) {
+      state.token = res.token;
+      state.user = res.user;
+      lsSet(LS.TOKEN, res.token);
+      lsSet(LS.EXP, res.exp);
+      lsSet(LS.USER, res.user);
+      lsSet(LS.LAST_USER, res.user.id);
+      if (state.cache && state.cache.me && state.cache.me.id !== res.user.id) { state.cache = null; lsDel(LS.CACHE); }
+      afterLogin();
+    }).catch(function (e) {
+      $('login-msg').textContent = e.message;
+      $('login-pin').value = '';
+      $('login-pin').setAttribute('aria-invalid', 'true');
+      $('login-pin').focus();
+    }).then(function () {
+      btn.disabled = false;
+      btn.textContent = 'เข้าสู่ระบบ';
+    });
+  }
+
+  function afterLogin() {
+    updateChrome();
+    renderHome();
+    var id = state.initialId;
+    var view = state.initialView;
+    state.initialId = '';
+    state.initialView = '';
+    if (id) openEquipment(id, 'QR');
+    else if (view === 'print' && isAdmin()) showPrint();
+    else show('home');
+    refreshBootstrap();
+    flushQueue();
+  }
+
+  function refreshBootstrap() {
+    return call('bootstrap').then(function (d) {
+      d.fetchedAt = Date.now();
+      state.cache = d;
+      state.user = d.me;
+      if (!lsSet(LS.CACHE, d)) console.warn('บันทึกข้อมูลออฟไลน์ไม่ได้ (พื้นที่เต็ม)');
+      lsSet(LS.USER, d.me);
+      updateChrome();
+      if (state.view === 'home') renderHome();
+    }).catch(function (e) {
+      if (e.code !== 'NETWORK' && e.code !== 'AUTH') toast(e.message);
+    });
+  }
+
+  function handleAuthExpired() {
+    if (!state.token) return;
+    state.token = null;
+    lsDel(LS.TOKEN);
+    lsDel(LS.EXP);
+    showLogin('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่ (ข้อมูลที่รอส่งยังอยู่ในเครื่อง)');
+  }
+
+  function logout() {
+    var q = queueFor(state.user && state.user.id);
+    var msg = q.length
+      ? 'ยังมีผลตรวจรอส่ง ' + q.length + ' รายการ (จะถูกเก็บไว้ในเครื่องและส่งเมื่อคุณเข้าสู่ระบบครั้งถัดไป)\n\nออกจากระบบหรือไม่?'
+      : 'ออกจากระบบหรือไม่?';
+    if (!window.confirm(msg)) return;
+    state.token = null;
+    state.user = null;
+    state.cache = null;
+    state.dash = null;
+    lsDel(LS.TOKEN); lsDel(LS.EXP); lsDel(LS.USER); lsDel(LS.CACHE);
+    updateChrome();
+    showLogin();
+  }
+
+  /* ============================== Home ============================== */
+
+  function renderHome() {
+    var u = state.user;
+    $('home-greet').textContent = u ? 'สวัสดี ' + u.name : '';
+    var box = $('home-progress');
+    var c = state.cache;
+    if (!c || !c.equipment) {
+      box.innerHTML = '<div class="skel" style="margin:0;height:52px"></div>';
+    } else {
+      var items = c.equipment;
+      var done = items.filter(function (i) { return i.inspectedThisMonth; }).length;
+      var dmg = items.filter(function (i) { return i.status === 'DAMAGED'; }).length;
+      var exp = items.filter(function (i) { return i.expiry !== 'OK'; }).length;
+      var pct = items.length ? Math.round(done / items.length * 100) : 0;
+      box.innerHTML =
+        '<div style="display:flex;justify-content:space-between"><b>ตรวจแล้วเดือนนี้</b><span><b>' + done + '</b> / ' + items.length + ' ถัง</span></div>' +
+        '<div class="progress"><div style="width:' + pct + '%"></div></div>' +
+        '<div class="chips">' + (dmg ? '<span class="chip DAMAGED">' + ico('alert') + 'ชำรุด ' + dmg + '</span>' : '') +
+        (exp ? '<span class="chip SOON">' + ico('hourglass') + 'หมดอายุ/ใกล้หมด ' + exp + '</span>' : '') + '</div>' +
+        '<div class="muted small" style="margin-top:6px">ข้อมูล ณ ' + esc(fmtDateTime(c.generatedAt)) + '</div>';
+    }
+    renderFailed();
+    renderQueueBanner();
+  }
+
+  function goManual() {
+    var raw = $('manual-id').value.trim().toUpperCase();
+    if (!ID_RE.test(raw)) { toast('รหัสถังไม่ถูกต้อง (ใช้ A-Z, 0-9, - หรือ _)'); return; }
+    $('manual-id').value = '';
+    openEquipment(raw, 'MANUAL');
+  }
+
+  /* ============================== Scanner ============================== */
+
+  function parseScannedId(text) {
+    text = String(text || '').trim();
+    var id = text;
+    var m = text.match(/[?&]id=([^&#]+)/i);
+    if (m) {
+      try { id = decodeURIComponent(m[1]); } catch (e) { id = m[1]; }
+    } else if (/^https?:\/\//i.test(text)) {
+      return '';
+    }
+    id = id.trim().toUpperCase();
+    return ID_RE.test(id) ? id : '';
+  }
+
+  function startScan() {
+    show('scan');
+    var msg = $('scan-msg');
+    state.scanLocked = false;
+    if (typeof Html5Qrcode === 'undefined') {
+      msg.textContent = 'โหลดตัวสแกนไม่สำเร็จ — ใช้ปุ่ม "ถ่ายรูป QR" หรือกลับไปพิมพ์รหัสแทน';
+      return;
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      msg.textContent = 'เบราว์เซอร์นี้เปิดกล้องสดไม่ได้ — กดปุ่ม "ถ่ายรูป QR แทน" ด้านล่าง';
+      return;
+    }
+    msg.textContent = 'กำลังเปิดกล้อง...';
+    try {
+      var scanner = new Html5Qrcode('reader', { formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE], verbose: false });
+      state.scanner = scanner;
+      scanner.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: function (w, h) { var s = Math.floor(Math.min(w, h) * 0.75); return { width: s, height: s }; } },
+        onScanSuccess,
+        function () { /* ยังไม่เจอ QR ในเฟรมนี้ */ }
+      ).then(function () {
+        if (state.view !== 'scan') { stopScanner(); return; }
+        msg.textContent = 'เล็งกล้องไปที่ QR Code บนถังดับเพลิง';
+      }).catch(function (err) {
+        state.scanner = null;
+        var denied = /Permission|NotAllowed/i.test(String(err && (err.name || err.message || err)));
+        msg.innerHTML = (denied ? 'ไม่ได้รับอนุญาตให้ใช้กล้อง' : 'เปิดกล้องสดไม่ได้') +
+          ' — กดปุ่ม <b>"ถ่ายรูป QR แทน"</b> ด้านล่าง หรือสแกนด้วยแอปกล้องของมือถือได้เลย';
+      });
+    } catch (err) {
+      state.scanner = null;
+      msg.textContent = 'เปิดกล้องสดไม่ได้ — กดปุ่ม "ถ่ายรูป QR แทน" ด้านล่าง';
+    }
+  }
+
+  function stopScanner() {
+    var s = state.scanner;
+    state.scanner = null;
+    if (!s) return Promise.resolve();
+    var p;
+    try { p = s.isScanning ? s.stop() : Promise.resolve(); } catch (e) { p = Promise.resolve(); }
+    return p.then(function () { try { s.clear(); } catch (e) { /* ignore */ } }).catch(function () { /* ignore */ });
+  }
+
+  function onScanSuccess(text) {
+    if (state.scanLocked) return;
+    var id = parseScannedId(text);
+    if (!id) { toast('QR นี้ไม่ใช่รหัสถังดับเพลิงของระบบ'); return; }
+    state.scanLocked = true;
+    if (navigator.vibrate) navigator.vibrate(80);
+    stopScanner().then(function () { openEquipment(id, 'QR'); });
+  }
+
+  function onScanFile(e) {
+    var file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    if (typeof Html5Qrcode === 'undefined') { toast('โหลดตัวอ่าน QR ไม่สำเร็จ'); return; }
+    loading(true, 'กำลังอ่าน QR จากรูป...');
+    stopScanner().then(function () {
+      return imageToCanvas(file, 1400);
+    }).then(function (canvas) {
+      return new Promise(function (resolve) { canvas.toBlob(resolve, 'image/jpeg', 0.92); });
+    }).then(function (blob) {
+      var reader = new Html5Qrcode('reader-file', { formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE], verbose: false });
+      var f = new File([blob], 'qr.jpg', { type: 'image/jpeg' });
+      return reader.scanFile(f, false).then(function (text) {
+        try { reader.clear(); } catch (x) { /* ignore */ }
+        return text;
+      });
+    }).then(function (text) {
+      loading(false);
+      var id = parseScannedId(text);
+      if (!id) { toast('QR นี้ไม่ใช่รหัสถังดับเพลิงของระบบ'); startScan(); return; }
+      openEquipment(id, 'QR');
+    }).catch(function () {
+      loading(false);
+      toast('อ่าน QR จากรูปไม่ได้ ลองถ่ายใหม่ให้ใกล้และชัดขึ้น', 4000);
+      startScan();
+    });
+  }
+
+  /* ============================== Images ============================== */
+
+  function imageToCanvas(file, maxDim) {
+    return new Promise(function (resolve, reject) {
+      var fr = new FileReader();
+      fr.onerror = function () { reject(new Error('อ่านไฟล์รูปไม่ได้')); };
+      fr.onload = function () {
+        var img = new Image();
+        img.onerror = function () { reject(new Error('อ่านไฟล์รูปไม่ได้')); };
+        img.onload = function () {
+          var w = img.naturalWidth, h = img.naturalHeight;
+          var scale = Math.min(1, maxDim / Math.max(w, h));
+          var c = document.createElement('canvas');
+          c.width = Math.max(1, Math.round(w * scale));
+          c.height = Math.max(1, Math.round(h * scale));
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          resolve(c);
+        };
+        img.src = fr.result;
+      };
+      fr.readAsDataURL(file);
+    });
+  }
+
+  function compressPhoto(file) {
+    return imageToCanvas(file, 1280).then(function (c) {
+      var q = 0.72;
+      var url = c.toDataURL('image/jpeg', q);
+      while (url.length > 3500000 && q > 0.3) { q -= 0.15; url = c.toDataURL('image/jpeg', q); }
+      return url;
+    });
+  }
+
+  /* ============================== Inspection ============================== */
+
+  function applicableChecklist(checklist, type) {
+    return (checklist || []).filter(function (q) { return !q.appliesTo.length || q.appliesTo.indexOf(type) !== -1; });
+  }
+
+  function findCached(id) {
+    var c = state.cache;
+    if (!c || !c.equipment) return null;
+    return c.equipment.filter(function (x) { return x.id === id; })[0] || null;
+  }
+
+  function openEquipment(id, method) {
+    loading(true, 'กำลังโหลดข้อมูลถัง ' + id + '...');
+    call('getEquipment', { id: id }).then(function (d) {
+      startInspect(d.item, d.checklist, method, false);
+    }).catch(function (err) {
+      if (err.code === 'NETWORK') {
+        var item = findCached(id);
+        if (item) { startInspect(item, applicableChecklist(state.cache.checklist, item.type), method, true); return; }
+        toast('ออฟไลน์ และไม่พบรหัส ' + id + ' ในข้อมูลที่โหลดไว้ในเครื่อง', 4500);
+      } else if (err.code !== 'AUTH') {
+        toast(err.message, 4500);
+      }
+      if (state.token) { renderHome(); show('home'); }
+    }).then(function () { loading(false); });
+  }
+
+  function startInspect(item, checklist, method, fromCache) {
+    if (!checklist.length) { toast('ยังไม่มีรายการตรวจสำหรับถังชนิดนี้'); return; }
+    state.current = { item: item, checklist: checklist, method: method, answers: {}, photo: null, repaired: false, remarks: '', fromCache: fromCache };
+    renderInspect();
+    show('inspect');
+  }
+
+  function renderInspect() {
+    var c = state.current;
+    var it = c.item;
+    var h = '<div class="insp-sticky"><div class="row"><span id="insp-count"></span><span class="muted">' + esc(it.id) + '</span></div><div class="progress"><div id="insp-bar" style="width:0"></div></div></div>' +
+      '<div class="card">' +
+      '<div class="tank-id">' + esc(it.id) + '</div>' +
+      '<div class="tank-loc">' + esc(locText(it)) + '</div>' +
+      '<div class="muted small">' + esc([it.type, it.size ? it.size + ' ปอนด์' : '', it.brand].filter(Boolean).join(' · ')) + '</div>' +
+      '<div class="chips">' + statusChip(it.status) + expiryChip(it) +
+      (c.method === 'MANUAL' ? '<span class="chip MANUAL">' + ico('keyboard') + 'พิมพ์รหัสเอง</span>' : '') + '</div>' +
+      expiryDetailsHtml(it) + '</div>';
+    if (c.fromCache) h += '<div class="notice info">' + ico('wifioff') + '<div>ออฟไลน์: ใช้ข้อมูลที่โหลดไว้ในเครื่อง ผลตรวจจะถูกส่งเมื่อมีสัญญาณ</div></div>';
+    if (it.inspectedThisMonth && it.last) {
+      h += '<div class="notice warn">' + ico('alert') + '<div>ถังนี้ตรวจแล้วเดือนนี้เมื่อ <b>' + esc(fmtDateTime(it.last.time)) + '</b> โดย <b>' + esc(it.last.by) +
+        '</b> (ผล: ' + (it.last.result === 'FAIL' ? 'ไม่ผ่าน' : 'ผ่าน') + ')<br>บันทึกซ้ำได้ ระบบจะใช้ผลล่าสุดเป็นสถานะ</div></div>';
+    }
+    if (it.status === 'DAMAGED' && it.last && it.last.failedItems) {
+      h += '<div class="notice warn">' + ico('wrench') + '<div>การตรวจครั้งก่อนไม่ผ่าน: ' + esc(it.last.failedItems) + '</div></div>';
+    }
+    h += '<h3>รายการตรวจ (' + c.checklist.length + ' ข้อ)</h3>';
+    c.checklist.forEach(function (q, i) {
+      h += '<div class="check-item" data-q="' + esc(q.id) + '">' +
+        '<div class="check-title">' + (i + 1) + '. ' + esc(q.title) + '</div>' +
+        (q.how ? '<div class="check-how">' + esc(q.how) + '</div>' : '<div style="height:8px"></div>') +
+        '<div class="pf" role="group" aria-label="' + esc(q.title) + '"><button type="button" data-ans="PASS" aria-pressed="false">' + ico('check') + 'ผ่าน</button>' +
+        '<button type="button" data-ans="FAIL" aria-pressed="false">' + ico('x') + 'ไม่ผ่าน</button></div></div>';
+    });
+    if (it.status === 'DAMAGED') {
+      h += '<div class="card" style="margin-top:12px"><label class="toggle"><input type="checkbox" id="insp-repaired"><span>ถังนี้ได้รับการซ่อม/เปลี่ยนแล้ว</span></label></div>';
+    }
+    h += '<div class="card" id="photo-box" style="margin-top:12px" hidden>' +
+      '<b>' + ico('camera') + ' รูปถ่ายจุดชำรุด (จำเป็น)</b>' +
+      '<label class="btn btn-outline file-btn" style="margin-top:8px" id="photo-label"><span id="photo-label-text">ถ่ายรูป</span><input type="file" accept="image/*" capture="environment" id="photo-input"></label>' +
+      '<img id="photo-preview" class="photo-preview" alt="รูปจุดชำรุด" hidden></div>';
+    h += '<label class="field" for="insp-remarks">หมายเหตุ (ถ้ามี)</label>' +
+      '<textarea id="insp-remarks" maxlength="500" placeholder="เช่น เปลี่ยนซีลแล้ว, ย้ายตำแหน่ง, แจ้งช่างแล้ว"></textarea>';
+    h += '<div class="sticky-submit"><button class="btn btn-primary" id="insp-submit" type="button" disabled></button></div>' +
+      '<button class="btn btn-ghost" id="insp-cancel" type="button" style="margin-top:8px">ยกเลิก</button>';
+    $('view-inspect').innerHTML = h;
+    updateInspectState();
+  }
+
+  function anyFail() {
+    var a = state.current.answers;
+    return Object.keys(a).some(function (k) { return a[k] === 'FAIL'; });
+  }
+
+  function updateInspectState() {
+    var c = state.current;
+    var total = c.checklist.length;
+    var answered = Object.keys(c.answers).length;
+    var fail = anyFail();
+    $('insp-count').textContent = 'ตอบแล้ว ' + answered + ' / ' + total + ' ข้อ';
+    $('insp-bar').style.width = Math.round(answered / total * 100) + '%';
+    Array.prototype.forEach.call(document.querySelectorAll('#view-inspect .check-item'), function (el) {
+      var v = c.answers[el.getAttribute('data-q')];
+      el.classList.toggle('pass', v === 'PASS');
+      el.classList.toggle('fail', v === 'FAIL');
+      var bp = el.querySelector('[data-ans=PASS]');
+      var bf = el.querySelector('[data-ans=FAIL]');
+      bp.className = v === 'PASS' ? 'sel-pass' : '';
+      bf.className = v === 'FAIL' ? 'sel-fail' : '';
+      bp.setAttribute('aria-pressed', String(v === 'PASS'));
+      bf.setAttribute('aria-pressed', String(v === 'FAIL'));
+    });
+    $('photo-box').hidden = !fail;
+    var btn = $('insp-submit');
+    if (answered < total) { btn.disabled = true; btn.textContent = 'ตอบแล้ว ' + answered + ' / ' + total + ' ข้อ'; }
+    else if (fail && !c.photo) { btn.disabled = true; btn.textContent = 'ถ่ายรูปจุดชำรุดก่อนบันทึก'; }
+    else { btn.disabled = false; btn.innerHTML = ico('save') + (fail ? 'บันทึกผล: ชำรุด' : 'บันทึกผล: ผ่านทุกข้อ'); }
+  }
+
+  function onInspectClick(e) {
+    var ans = e.target.closest('[data-ans]');
+    if (ans) {
+      var item = ans.closest('.check-item');
+      state.current.answers[item.getAttribute('data-q')] = ans.getAttribute('data-ans');
+      if (navigator.vibrate) navigator.vibrate(12);
+      var nextEl = item.nextElementSibling;
+      while (nextEl && !(nextEl.classList.contains('check-item') && !state.current.answers[nextEl.getAttribute('data-q')])) nextEl = nextEl.nextElementSibling;
+      if (nextEl && ans.getAttribute('data-ans') === 'PASS') setTimeout(function () { nextEl.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 180);
+      updateInspectState();
+      return;
+    }
+    if (e.target.closest('#insp-submit')) { submitInspection(); return; }
+    if (e.target.closest('#insp-cancel')) { onNav('home'); }
+  }
+
+  function onInspectChange(e) {
+    var c = state.current;
+    if (!c) return;
+    if (e.target.id === 'insp-repaired') c.repaired = e.target.checked;
+    if (e.target.id === 'photo-input') {
+      var file = e.target.files && e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+      loading(true, 'กำลังย่อรูป...');
+      compressPhoto(file).then(function (dataUrl) {
+        c.photo = dataUrl;
+        var img = $('photo-preview');
+        img.src = dataUrl;
+        img.hidden = false;
+        $('photo-label-text').textContent = 'ถ่ายรูปใหม่';
+        updateInspectState();
+      }).catch(function (err) { toast(err.message); }).then(function () { loading(false); });
+    }
+  }
+
+  function submitInspection() {
+    var c = state.current;
+    if (!c) return;
+    var fail = anyFail();
+    if (Object.keys(c.answers).length < c.checklist.length) { toast('กรุณาตอบให้ครบทุกข้อ'); return; }
+    if (fail && !c.photo) { toast('กรุณาถ่ายรูปจุดที่ชำรุด'); return; }
+    var payload = {
+      uuid: uuid(),
+      equipmentId: c.item.id,
+      method: c.method,
+      answers: c.answers,
+      remarks: ($('insp-remarks').value || '').trim().slice(0, 500),
+      repaired: !!c.repaired,
+      photo: fail ? c.photo : null,
+      clientTime: new Date().toISOString(),
+    };
+    var btn = $('insp-submit');
+    btn.disabled = true;
+    btn.textContent = 'กำลังบันทึก...';
+    call('submitInspection', payload).then(function (res) {
+      applyLocalResult(c.item.id, payload, res.status);
+      renderDone(c.item, res.status, false);
+    }).catch(function (err) {
+      if (err.code === 'NETWORK' || err.code === 'AUTH' || err.code === 'BUSY') {
+        if (!enqueue(payload)) {
+          toast('พื้นที่ในเครื่องเต็ม บันทึกออฟไลน์ไม่ได้ — ลองลดจำนวนรูปที่รอส่ง', 5000);
+          updateInspectState();
+          return;
+        }
+        applyLocalResult(c.item.id, payload, fail ? 'DAMAGED' : 'NORMAL');
+        if (err.code === 'AUTH') { toast('บันทึกไว้ในเครื่องแล้ว — เข้าสู่ระบบใหม่เพื่อส่งข้อมูล', 5000); return; }
+        renderDone(c.item, fail ? 'DAMAGED' : 'NORMAL', true);
+      } else {
+        toast(err.message, 5000);
+        updateInspectState();
+      }
+    });
+  }
+
+  function applyLocalResult(id, payload, status) {
+    var it = findCached(id);
+    if (!it) return;
+    var fail = Object.keys(payload.answers).some(function (k) { return payload.answers[k] === 'FAIL'; });
+    it.status = status;
+    it.inspectedThisMonth = true;
+    it.monthCount = (it.monthCount || 0) + 1;
+    it.last = { time: payload.clientTime, by: state.user.name, result: fail ? 'FAIL' : 'PASS', method: payload.method, repaired: payload.repaired, failedItems: '' };
+    lsSet(LS.CACHE, state.cache);
+  }
+
+  function renderDone(item, status, queued) {
+    state.current = null;
+    var ok = status !== 'DAMAGED';
+    $('view-done').innerHTML =
+      '<div class="done-icon ' + (queued ? 'q' : (ok ? 'ok' : 'bad')) + '">' + ico(queued ? 'upload' : (ok ? 'check' : 'alert')) + '</div>' +
+      '<h2 class="center">' + (queued ? 'บันทึกไว้ในเครื่องแล้ว' : 'บันทึกผลตรวจเรียบร้อย') + '</h2>' +
+      '<p class="center"><b>' + esc(item.id) + '</b><br><span class="muted">' + esc(locText(item)) + '</span></p>' +
+      '<p class="center">' + statusChip(status) + '</p>' +
+      (queued ? '<div class="notice info">ไม่มีสัญญาณขณะนี้ ระบบจะส่งข้อมูลขึ้น Google Sheets อัตโนมัติเมื่อกลับมาออนไลน์ (เปิดหน้านี้ค้างไว้)</div>' : '') +
+      (!ok && !queued ? '<div class="notice warn">ระบบส่งอีเมลแจ้งผู้รับผิดชอบพร้อมรูปแล้ว</div>' : '') +
+      '<div class="stack" style="margin-top:18px">' +
+      '<button class="btn btn-primary btn-big" type="button" id="done-next">' + ico('scan') + 'สแกนถังถัดไป</button>' +
+      '<button class="btn btn-outline" type="button" id="done-home">กลับหน้าหลัก</button></div>';
+    show('done');
+    renderQueueBanner();
+  }
+
+  /* ============================== Offline queue ============================== */
+
+  function enqueue(payload) {
+    var q = lsGet(LS.QUEUE, []);
+    q.push({ payload: payload, userId: state.user.id, queuedAt: Date.now() });
+    var ok = lsSet(LS.QUEUE, q);
+    renderQueueBanner();
+    return ok;
+  }
+
+  function queueFor(userId) {
+    return lsGet(LS.QUEUE, []).filter(function (x) { return x.userId === userId; });
+  }
+
+  function removeFromQueue(id) {
+    lsSet(LS.QUEUE, lsGet(LS.QUEUE, []).filter(function (x) { return x.payload.uuid !== id; }));
+  }
+
+  function flushQueue() {
+    if (state.flushing || !state.token || !state.user) return Promise.resolve();
+    var mine = queueFor(state.user.id);
+    if (!mine.length) { renderQueueBanner(); return Promise.resolve(); }
+    state.flushing = true;
+    var sent = 0;
+    var i = 0;
+    function next() {
+      if (i >= mine.length) return Promise.resolve();
+      var entry = mine[i++];
+      return call('submitInspection', entry.payload).then(function () {
+        removeFromQueue(entry.payload.uuid);
+        sent++;
+        return next();
+      }).catch(function (err) {
+        if (err.code === 'NETWORK' || err.code === 'AUTH' || err.code === 'BUSY' || err.code === 'ERROR') return; // ลองใหม่รอบหน้า
+        // ข้อมูลไม่ผ่านการตรวจสอบของ server → ย้ายไปรายการที่ส่งไม่สำเร็จ
+        removeFromQueue(entry.payload.uuid);
+        var failed = lsGet(LS.FAILED, []);
+        failed.push({ equipmentId: entry.payload.equipmentId, time: entry.payload.clientTime, error: err.message });
+        lsSet(LS.FAILED, failed.slice(-20));
+        return next();
+      });
+    }
+    return next().then(function () {
+      state.flushing = false;
+      renderQueueBanner();
+      if (state.view === 'home') renderFailed();
+      if (sent) { toast('ส่งผลตรวจที่ค้างไว้ ' + sent + ' รายการแล้ว'); refreshBootstrap(); }
+    });
+  }
+
+  function renderQueueBanner() {
+    var n = state.user ? queueFor(state.user.id).length : 0;
+    var b = $('queue-banner');
+    b.hidden = !n;
+    if (n) b.innerHTML = ico('upload') + '<div>รอส่ง <b>' + n + '</b> รายการ</div><button type="button" class="btn btn-outline btn-sm" id="queue-send">ส่งตอนนี้</button>';
+  }
+
+  function renderFailed() {
+    var failed = lsGet(LS.FAILED, []);
+    var box = $('home-failed');
+    if (!failed.length) { box.innerHTML = ''; return; }
+    box.innerHTML = '<div class="card card-alert"><b>' + ico('alert') + ' ส่งข้อมูลไม่สำเร็จ ' + failed.length + ' รายการ</b>' +
+      '<div class="small" style="margin-top:6px">' + failed.map(function (f) {
+        return esc(f.equipmentId) + ' (' + esc(fmtDateTime(f.time)) + '): ' + esc(f.error);
+      }).join('<br>') + '</div><p class="muted small">กรุณาตรวจถังเหล่านี้ใหม่อีกครั้ง</p>' +
+      '<button class="btn btn-outline" type="button" id="failed-clear">รับทราบ ล้างรายการ</button></div>';
+  }
+
+  /* ============================== Dashboard ============================== */
+
+  var LIST_LABEL = {
+    problem: 'มีปัญหา', all: 'ทั้งหมด', NORMAL: 'ปกติ', DAMAGED: 'ชำรุด', PENDING: 'รอการตรวจ', EXPIRED: 'หมดอายุ', SOON: 'ใกล้หมดอายุ',
+  };
+
+  function showDashboard() {
+    show('dashboard');
+    if (!state.dash) $('dash-list').innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
+    if (state.dash) renderDashboard();
+    loadDashboard();
+  }
+
+  function loadDashboard() {
+    $('dash-updated').textContent = state.dash ? $('dash-updated').textContent : 'กำลังโหลด...';
+    return call('getDashboard').then(function (d) {
+      state.dash = d;
+      if (state.view === 'dashboard') renderDashboard();
+    }).catch(function (err) {
+      if (err.code === 'NETWORK' && state.cache && state.cache.equipment) {
+        state.dash = { items: state.cache.equipment, generatedAt: state.cache.generatedAt, offline: true };
+        if (state.view === 'dashboard') renderDashboard();
+      } else if (err.code !== 'AUTH') {
+        toast(err.message);
+      }
+    });
+  }
+
+  function matchesList(it, key) {
+    if (key === 'all') return true;
+    if (key === 'problem') return it.status === 'DAMAGED' || it.expiry !== 'OK';
+    if (key === 'EXPIRED' || key === 'SOON') return it.expiry === key;
+    return it.status === key;
+  }
+
+  function urgencyRank(it) {
+    if (it.status === 'DAMAGED' && it.expiry === 'EXPIRED') return 0;
+    if (it.status === 'DAMAGED') return 1;
+    if (it.expiry === 'EXPIRED') return 2;
+    if (it.expiry === 'SOON') return 3;
+    if (it.status === 'PENDING') return 4;
+    return 5;
+  }
+
+  function renderDashboard() {
+    var d = state.dash;
+    var f = state.dashFilter;
+    var all = d.items || [];
+    $('dash-updated').textContent = (d.offline ? 'ข้อมูลออฟไลน์ ' : 'ข้อมูล ณ ') + fmtDateTime(d.generatedAt) + ' · อัปเดตอัตโนมัติทุก 60 วินาที';
+
+    var buildings = all.map(function (i) { return i.building; }).filter(function (b, i, a) { return b && a.indexOf(b) === i; }).sort(naturalCmp);
+    if (f.building && buildings.indexOf(f.building) === -1) f.building = '';
+    $('f-building').innerHTML = '<option value="">ทุกอาคาร</option>' + buildings.map(function (b) {
+      return '<option value="' + esc(b) + '"' + (b === f.building ? ' selected' : '') + '>' + esc(b) + '</option>';
+    }).join('');
+    var floors = all.filter(function (i) { return !f.building || i.building === f.building; })
+      .map(function (i) { return i.floor; }).filter(function (x, i, a) { return x && a.indexOf(x) === i; }).sort(naturalCmp);
+    if (f.floor && floors.indexOf(f.floor) === -1) f.floor = '';
+    $('f-floor').innerHTML = '<option value="">ทุกชั้น</option>' + floors.map(function (x) {
+      return '<option value="' + esc(x) + '"' + (x === f.floor ? ' selected' : '') + '>ชั้น ' + esc(x) + '</option>';
+    }).join('');
+
+    var items = all.filter(function (i) { return (!f.building || i.building === f.building) && (!f.floor || i.floor === f.floor); });
+    var s = { total: items.length, NORMAL: 0, DAMAGED: 0, PENDING: 0, EXPIRED: 0, SOON: 0, done: 0 };
+    items.forEach(function (i) {
+      s[i.status]++;
+      if (i.expiry === 'EXPIRED' || i.expiry === 'SOON') s[i.expiry]++;
+      if (i.inspectedThisMonth) s.done++;
+    });
+    var pct = s.total ? Math.round(s.done / s.total * 100) : 0;
+    $('dash-progress-text').innerHTML = '<b>' + s.done + '</b> / ' + s.total + ' ถัง (' + pct + '%)';
+    $('dash-progress-bar').style.width = pct + '%';
+
+    var cards = [['all', 'ทั้งหมด', s.total, ''], ['NORMAL', 'ปกติ', s.NORMAL, 's-normal'], ['DAMAGED', 'ชำรุด', s.DAMAGED, 's-damaged'],
+      ['PENDING', 'รอการตรวจ', s.PENDING, 's-pending'], ['EXPIRED', 'หมดอายุ', s.EXPIRED, 's-expired'], ['SOON', 'ใกล้หมดอายุ', s.SOON, 's-soon']];
+    $('dash-stats').innerHTML = cards.map(function (c) {
+      return '<button type="button" class="stat ' + c[3] + (f.list === c[0] ? ' active' : '') + '" aria-pressed="' + (f.list === c[0]) + '" data-list="' + c[0] + '">' +
+        ico(STATUS_ICON[c[0]] || EXPIRY_ICON[c[0]] || 'ext') + '<div class="card-num">' + c[2] + '</div><div class="lbl">' + c[1] + '</div></button>';
+    }).join('');
+
+    var problemCount = items.filter(function (i) { return matchesList(i, 'problem'); }).length;
+    var tabs = [['problem', 'มีปัญหา (' + problemCount + ')'], ['PENDING', 'รอตรวจ (' + s.PENDING + ')'], ['all', 'ทั้งหมด (' + s.total + ')']];
+    var tabHtml = tabs.map(function (t) {
+      return '<button type="button" aria-pressed="' + (f.list === t[0]) + '" data-list="' + t[0] + '" class="' + (f.list === t[0] ? 'active' : '') + '">' + t[1] + '</button>';
+    }).join('');
+    if (['problem', 'PENDING', 'all'].indexOf(f.list) === -1) {
+      tabHtml = '<button type="button" aria-pressed="true" class="active" data-list="' + esc(f.list) + '">' + esc(LIST_LABEL[f.list]) + '</button>' + tabHtml;
+    }
+    $('dash-tabs').innerHTML = tabHtml;
+
+    var list = items.filter(function (i) { return matchesList(i, f.list); }).sort(function (a, b) {
+      return urgencyRank(a) - urgencyRank(b) ||
+        ((a.minDaysLeft === null ? 99999 : a.minDaysLeft) - (b.minDaysLeft === null ? 99999 : b.minDaysLeft)) ||
+        naturalCmp(a.id, b.id);
+    });
+    $('dash-list').innerHTML = list.length ? list.map(function (i) {
+      return '<button type="button" class="list-item" data-hist="' + esc(i.id) + '"><div class="grow"><div class="t">' + esc(i.id) +
+        '</div><div class="s">' + (i.last ? esc(locText(i)) + '<br>ตรวจล่าสุด ' + esc(fmtDateTime(i.last.time)) + ' · ' + esc(i.last.by) : esc(locText(i)) + '<br>ยังไม่เคยตรวจ') +
+        '</div></div><div class="side">' + statusChip(i.status) + expiryChip(i) + '</div></button>';
+    }).join('') : '<div class="empty">' + ico('check') + 'ไม่มีรายการในหมวดนี้</div>';
+
+    var adminBox = $('dash-admin');
+    adminBox.hidden = !(isAdmin() && d.inspectorStats);
+    if (!adminBox.hidden) {
+      $('dash-inspectors').innerHTML = d.inspectorStats.length ? '<table class="stats"><tr><th>ผู้ตรวจ</th><th class="num">ครั้ง</th><th class="num">ถัง</th><th class="num">ไม่ผ่าน</th><th class="num">พิมพ์รหัสเอง</th></tr>' +
+        d.inspectorStats.map(function (x) {
+          return '<tr><td>' + esc(x.name) + '</td><td class="num">' + x.count + '</td><td class="num">' + x.tanks + '</td><td class="num">' + x.fail +
+            '</td><td class="num' + (x.manualPct > 20 ? ' hl' : '') + '">' + x.manual + ' (' + x.manualPct + '%)</td></tr>';
+        }).join('') + '</table><p class="muted small">สัดส่วนพิมพ์รหัสเองเกิน 20% จะแสดงเป็นสีแดง ควรตรวจสอบป้าย QR หรือวิธีการตรวจ</p>'
+        : '<div class="empty">ยังไม่มีการตรวจในเดือนนี้</div>';
+    }
+  }
+
+  function inspectionRowHtml(r, showEquipment) {
+    return '<div class="hist">' +
+      '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>' +
+      (showEquipment ? esc(r.equipmentId) + ' · ' : '') + esc(fmtDateTime(r.time)) + '</b>' +
+      '<span class="chip ' + (r.result === 'FAIL' ? 'DAMAGED' : 'NORMAL') + '">' + ico(r.result === 'FAIL' ? 'x' : 'check') + (r.result === 'FAIL' ? 'ไม่ผ่าน' : 'ผ่าน') + '</span></div>' +
+      (showEquipment && r.location ? '<div class="muted small">' + esc(r.location) + '</div>' : '') +
+      '<div class="small">โดย ' + esc(r.by) + (r.method === 'MANUAL' ? ' <span class="chip MANUAL">MANUAL</span>' : '') +
+      (r.repaired ? ' <span class="chip NORMAL">' + ico('wrench') + 'ซ่อม/เปลี่ยนแล้ว</span>' : '') + '</div>' +
+      (r.failedItems ? '<div class="small hl">ไม่ผ่าน: ' + esc(r.failedItems) + '</div>' : '') +
+      (r.remarks ? '<div class="small">' + ico('note') + ' ' + esc(r.remarks) + '</div>' : '') +
+      (r.photoId ? '<button type="button" class="btn btn-outline btn-sm" data-photo="' + esc(r.photoId) + '" style="margin-top:8px">' + ico('image') + 'ดูรูป</button>' :
+        (r.hasPhoto ? '<div class="muted small">' + ico('image') + ' มีรูป (ผู้ดูแลระบบดูได้)</div>' : '')) +
+      '</div>';
+  }
+
+  function openHistory(id) {
+    var it = (state.dash && state.dash.items || []).filter(function (x) { return x.id === id; })[0];
+    var head = it ? '<div class="card"><div class="tank-loc">' + esc(locText(it)) + '</div><div class="muted small">' +
+      esc([it.type, it.size ? it.size + ' ปอนด์' : ''].filter(Boolean).join(' · ')) + '</div><div class="chips">' +
+      statusChip(it.status) + expiryChip(it) + '</div>' + expiryDetailsHtml(it) + '</div>' : '';
+    openModal(id, head + '<h3>ประวัติการตรวจ</h3><div id="hist-list" class="muted">กำลังโหลด...</div>');
+    call('getHistory', { id: id }).then(function (rows) {
+      var el = $('hist-list');
+      if (!el) return;
+      el.classList.remove('muted');
+      el.innerHTML = rows.length ? rows.map(function (r) { return inspectionRowHtml(r, false); }).join('') : '<div class="empty">ยังไม่มีประวัติการตรวจ</div>';
+    }).catch(function (err) {
+      var el = $('hist-list');
+      if (el) el.textContent = err.code === 'NETWORK' ? 'ต้องเชื่อมต่ออินเทอร์เน็ตเพื่อดูประวัติ' : err.message;
+    });
+  }
+
+  function openPhoto(photoId) {
+    loading(true, 'กำลังโหลดรูป...');
+    call('getPhoto', { photoId: photoId }).then(function (res) {
+      openModal('รูปจุดชำรุด', '<img src="' + esc(res.dataUrl) + '" alt="รูปจุดชำรุด" style="width:100%;border-radius:12px">');
+    }).catch(function (err) { toast(err.message); }).then(function () { loading(false); });
+  }
+
+  /* ============================== Admin log ============================== */
+
+  function showLog() {
+    if (!isAdmin()) return;
+    show('log');
+    if (!$('log-month').value) $('log-month').value = currentYm();
+    loadLog();
+  }
+
+  function loadLog() {
+    $('log-summary').textContent = 'กำลังโหลด...';
+    $('log-list').innerHTML = '';
+    call('getInspectionLog', { ym: $('log-month').value }).then(function (d) {
+      state.log = d;
+      renderLog();
+    }).catch(function (err) {
+      $('log-summary').textContent = err.code === 'NETWORK' ? 'ต้องเชื่อมต่ออินเทอร์เน็ต' : err.message;
+    });
+  }
+
+  function renderLog() {
+    var d = state.log;
+    if (!d) return;
+    var q = $('log-search').value.trim().toLowerCase();
+    var rows = d.rows.filter(function (r) {
+      return !q || (r.equipmentId + ' ' + r.by + ' ' + r.location).toLowerCase().indexOf(q) !== -1;
+    });
+    var p = d.ym.split('-');
+    $('log-summary').textContent = 'เดือน ' + p[1] + '/' + (Number(p[0]) + 543) + ' · ทั้งหมด ' + d.total + ' ครั้ง' +
+      (q ? ' · ตรงกับคำค้น ' + rows.length + ' ครั้ง' : '') + (d.total > d.rows.length ? ' (แสดง ' + d.rows.length + ' รายการล่าสุด)' : '');
+    $('log-list').innerHTML = rows.length ? rows.map(function (r) { return inspectionRowHtml(r, true); }).join('') : '<div class="empty">ไม่มีข้อมูล</div>';
+  }
+
+  /* ============================== Print QR ============================== */
+
+  var qrLibPromise = null;
+  function loadQrLib() {
+    if (window.QRCode) return Promise.resolve();
+    if (!qrLibPromise) {
+      qrLibPromise = new Promise(function (resolve, reject) {
+        var s = document.createElement('script');
+        s.src = QR_LIB;
+        s.onload = resolve;
+        s.onerror = function () { qrLibPromise = null; reject(new Error('โหลดไลบรารีสร้าง QR ไม่สำเร็จ')); };
+        document.head.appendChild(s);
+      });
+    }
+    return qrLibPromise;
+  }
+
+  function showPrint() {
+    if (!isAdmin()) { toast('เมนูนี้สำหรับผู้ดูแลระบบเท่านั้น'); return; }
+    show('print');
+    loadPrint();
+  }
+
+  function loadPrint() {
+    $('print-info').textContent = 'กำลังเตรียมป้าย...';
+    $('print-sheets').innerHTML = '';
+    $('print-go').disabled = true;
+    var building = $('print-building').value;
+    Promise.all([loadQrLib(), call('getPrintData', { building: building })]).then(function (r) {
+      var d = r[1];
+      var sel = $('print-building');
+      sel.innerHTML = '<option value="">ทุกอาคาร</option>' + d.buildings.map(function (b) {
+        return '<option value="' + esc(b) + '"' + (b === building ? ' selected' : '') + '>' + esc(b) + '</option>';
+      }).join('');
+      var warn = $('print-warn');
+      var base = d.baseUrl || D.baseUrl || '';
+      warn.hidden = true;
+      if (!base) { warn.hidden = false; warn.textContent = 'ยังไม่ได้ตั้งค่า WEBAPP_URL ในชีต Config — QR จะเปิดหน้าเว็บไม่ได้'; }
+      else if (/\/dev(\?|$)/.test(base)) { warn.hidden = false; warn.textContent = 'URL ที่ใช้เป็นแบบทดสอบ (/dev) — ควรตั้ง WEBAPP_URL เป็น URL ที่ลงท้ายด้วย /exec'; }
+      renderLabels(d.items, base);
+      $('print-info').textContent = d.items.length + ' ป้าย · ' + Math.ceil(d.items.length / 12) + ' แผ่น A4';
+      $('print-go').disabled = !d.items.length;
+    }).catch(function (err) {
+      $('print-info').textContent = err.message;
+    });
+  }
+
+  function renderLabels(items, base) {
+    var host = $('print-sheets');
+    host.innerHTML = '';
+    for (var p = 0; p < items.length; p += 12) {
+      var sheet = document.createElement('div');
+      sheet.className = 'label-sheet';
+      items.slice(p, p + 12).forEach(function (it) {
+        var el = document.createElement('div');
+        el.className = 'qr-label';
+        el.innerHTML = '<div class="ql-head">' + ico('ext') + ' ถังดับเพลิง</div><div class="ql-qr"></div>' +
+          '<div class="ql-id">' + esc(it.id) + '</div><div class="ql-loc">' + esc(locText(it)) + '</div>' +
+          '<div class="ql-hint">สแกนเพื่อตรวจ</div>';
+        new QRCode(el.querySelector('.ql-qr'), {
+          text: (base || '') + '?id=' + encodeURIComponent(it.id),
+          width: 256, height: 256, correctLevel: QRCode.CorrectLevel.M,
+        });
+        sheet.appendChild(el);
+      });
+      host.appendChild(sheet);
+    }
+  }
+
+  /* ============================== Init ============================== */
+
+  function bind() {
+    $('login-btn').addEventListener('click', doLogin);
+    $('login-pin').addEventListener('input', function () { this.removeAttribute('aria-invalid'); });
+    $('login-pin').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
+    $('home-scan').addEventListener('click', startScan);
+    $('manual-go').addEventListener('click', goManual);
+    $('manual-id').addEventListener('keydown', function (e) { if (e.key === 'Enter') goManual(); });
+    $('home-log').addEventListener('click', showLog);
+    $('home-print').addEventListener('click', showPrint);
+    $('scan-cancel').addEventListener('click', function () { renderHome(); show('home'); });
+    $('scan-file').addEventListener('change', onScanFile);
+    $('view-inspect').addEventListener('click', onInspectClick);
+    $('view-inspect').addEventListener('change', onInspectChange);
+    $('view-done').addEventListener('click', function (e) {
+      if (e.target.closest('#done-next')) startScan();
+      else if (e.target.closest('#done-home')) { renderHome(); show('home'); }
+    });
+    $('home-failed').addEventListener('click', function (e) {
+      if (e.target.closest('#failed-clear')) { lsDel(LS.FAILED); renderFailed(); }
+    });
+    $('queue-banner').addEventListener('click', function (e) {
+      if (e.target.closest('#queue-send')) {
+        if (navigator.onLine === false) { toast('ยังออฟไลน์อยู่'); return; }
+        flushQueue();
+      }
+    });
+    $('dash-refresh').addEventListener('click', loadDashboard);
+    $('f-building').addEventListener('change', function (e) { state.dashFilter.building = e.target.value; state.dashFilter.floor = ''; renderDashboard(); });
+    $('f-floor').addEventListener('change', function (e) { state.dashFilter.floor = e.target.value; renderDashboard(); });
+    $('view-dashboard').addEventListener('click', function (e) {
+      var l = e.target.closest('[data-list]');
+      if (l) { state.dashFilter.list = l.getAttribute('data-list'); renderDashboard(); return; }
+      var h = e.target.closest('[data-hist]');
+      if (h) openHistory(h.getAttribute('data-hist'));
+    });
+    $('log-month').addEventListener('change', loadLog);
+    $('log-search').addEventListener('input', renderLog);
+    document.addEventListener('click', function (e) {
+      var ph = e.target.closest('[data-photo]');
+      if (ph) openPhoto(ph.getAttribute('data-photo'));
+    });
+    $('print-building').addEventListener('change', loadPrint);
+    $('print-go').addEventListener('click', function () { window.print(); });
+    $('print-back').addEventListener('click', function () { renderHome(); show('home'); });
+    $('modal-close').addEventListener('click', closeModal);
+    document.addEventListener('keydown', onModalKey);
+    $('modal').addEventListener('click', function (e) { if (e.target.id === 'modal') closeModal(); });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-nav]'), function (b) {
+      b.addEventListener('click', function () { onNav(b.getAttribute('data-nav')); });
+    });
+    window.addEventListener('online', updateNet);
+    window.addEventListener('offline', updateNet);
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible' && state.view === 'dashboard') loadDashboard();
+    });
+    setInterval(function () {
+      if (state.view === 'dashboard' && document.visibilityState === 'visible') loadDashboard();
+    }, 60000);
+    setInterval(function () { if (navigator.onLine !== false) flushQueue(); }, 30000);
+  }
+
+  function init() {
+    bind();
+    detectInApp();
+    updateNet();
+    var token = lsGet(LS.TOKEN, null);
+    var exp = lsGet(LS.EXP, 0);
+    var user = lsGet(LS.USER, null);
+    if (token && user && exp > Date.now() + 60000) {
+      state.token = token;
+      state.user = user;
+      state.cache = lsGet(LS.CACHE, null);
+      afterLogin();
+    } else {
+      updateChrome();
+      showLogin();
+    }
+  }
+
+  init();
+})();
+</script>

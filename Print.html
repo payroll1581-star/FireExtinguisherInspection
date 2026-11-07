@@ -1,0 +1,41 @@
+<!-- Print.html — สไตล์ป้าย QR Code ขนาด 5×6 ซม. (A4 แผ่นละ 3×4 = 12 ดวง) ใช้กับ #view-print ใน Index.html -->
+<style>
+  .label-sheet {
+    width: 190mm; margin: 0 auto 12px; display: grid;
+    grid-template-columns: repeat(3, 50mm); grid-auto-rows: 60mm;
+    column-gap: 12mm; row-gap: 6mm; justify-content: center; padding: 6mm 0;
+    background: #fff;
+  }
+  .qr-label {
+    width: 50mm; height: 60mm; border: 0.3mm dashed #999; border-radius: 2mm;
+    display: flex; flex-direction: column; align-items: center; overflow: hidden; background: #fff; color: #1d1d1f;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .qr-label .ql-head .i { width: 11px; height: 11px; }
+  .qr-label .ql-head {
+    width: 100%; background: #C62828; color: #fff; text-align: center;
+    font-family: 'Prompt', sans-serif; font-size: 8.5pt; font-weight: 600; padding: 1.2mm 0;
+  }
+  .qr-label .ql-qr { width: 32mm; height: 32mm; margin-top: 2mm; }
+  .qr-label .ql-qr img, .qr-label .ql-qr canvas { width: 32mm !important; height: 32mm !important; display: block; }
+  .qr-label .ql-id { font-family: 'Prompt', sans-serif; font-size: 15pt; font-weight: 700; line-height: 1.1; margin-top: 1.5mm; letter-spacing: .3px; }
+  .qr-label .ql-loc {
+    font-family: 'Sarabun', sans-serif; font-size: 7.5pt; line-height: 1.2; text-align: center; padding: 0 2mm; margin-top: .6mm;
+    max-height: 2.4em; overflow: hidden;
+  }
+  .qr-label .ql-hint { font-family: 'Sarabun', sans-serif; font-size: 7pt; color: #555; margin-top: auto; padding-bottom: 1.2mm; }
+
+  @media screen {
+    #print-sheets { overflow-x: auto; padding: 0 8px 24px; }
+    .label-sheet { box-shadow: 0 1px 6px rgba(0,0,0,.15); }
+  }
+  @media print {
+    @page { size: A4 portrait; margin: 10mm; }
+    html, body { background: #fff !important; padding: 0 !important; }
+    .no-print, .topbar, .bottomnav, .banner, .modal, .loading, .toast { display: none !important; }
+    #view-print { display: block !important; }
+    .label-sheet { margin: 0; padding: 0; box-shadow: none; page-break-after: always; break-after: page; }
+    .label-sheet:last-child { page-break-after: auto; break-after: auto; }
+    .qr-label { break-inside: avoid; }
+  }
+</style>
