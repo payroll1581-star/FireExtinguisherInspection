@@ -18,6 +18,8 @@ Web App บน Google Apps Script + Google Sheets สำหรับสแกน
 | `Index.html` | โครงหน้าเว็บ |
 | `Styles.html` | CSS (มือถือเป็นหลัก โทนแดง-ขาว) |
 | `App.html` | JavaScript ฝั่งหน้าเว็บ (สแกน, ฟอร์มตรวจ, คิวออฟไลน์, Dashboard, พิมพ์ QR) |
+| `docs/index.html` | (ไม่บังคับ) หน้าสแกน QR กล้องสด วางบน GitHub Pages |
+| `I18n.html` | พจนานุกรมไทย/อังกฤษ และตัวช่วยแปลของปุ่มสลับภาษา |
 | `Print.html` | CSS ป้าย QR 5×6 ซม. สำหรับพิมพ์ A4 |
 | `appsscript.json` | Manifest (เขตเวลา Asia/Bangkok, การ deploy Web App) |
 
@@ -33,7 +35,7 @@ Web App บน Google Apps Script + Google Sheets สำหรับสแกน
 4. สร้างไฟล์ Script (ปุ่ม **＋ → Script**) ตามชื่อด้านล่าง แล้ววางโค้ดให้ตรงไฟล์ (Editor จะเติม `.gs` ให้เอง)
    `Code`, `Auth`, `Api`, `Notify`, `Report`, `Setup`, `Tests`
    (ไฟล์ `Code.gs` เดิมที่มีอยู่ ให้ลบเนื้อหาเดิมแล้ววางทับ)
-5. สร้างไฟล์ HTML (ปุ่ม **＋ → HTML**) ชื่อ `Index`, `Styles`, `App`, `Print` แล้ววางโค้ดให้ตรงไฟล์ — **ชื่อต้องตรงตัวพิมพ์เล็ก/ใหญ่**
+5. สร้างไฟล์ HTML (ปุ่ม **＋ → HTML**) ชื่อ `Index`, `Styles`, `App`, `I18n`, `Print` แล้ววางโค้ดให้ตรงไฟล์ — **ชื่อต้องตรงตัวพิมพ์เล็ก/ใหญ่**
 6. กด 💾 Save
 
 ### 2) ติดตั้งระบบ
@@ -57,6 +59,7 @@ Web App บน Google Apps Script + Google Sheets สำหรับสแกน
 | `ALERT_EMAILS` | อีเมลผู้รับแจ้งเตือน/รายงาน คั่นด้วย `,` |
 | `DAILY_ALERT_HOUR` | ชั่วโมงส่งสรุปรายวัน (แก้แล้วกด **ติดตั้งระบบ** ซ้ำ) |
 | `WEBAPP_URL` | URL ของ Web App ที่ลงท้าย `/exec` (ได้จากข้อ 5) |
+| `SCANNER_URL` | (ไม่บังคับ) URL หน้าสแกนกล้องสดบน GitHub Pages เช่น `https://<ชื่อบัญชี>.github.io/<ชื่อ repo>/` — ดูหัวข้อ "สแกนกล้องสดบนมือถือ" |
 
 ### 4) เพิ่มผู้ใช้
 เมนู **🧯 → 👤 เพิ่มผู้ใช้** → ใส่ชื่อ → เลือก Admin/Inspector → ตั้ง PIN 4–6 หลัก (แนะนำ 6 หลัก)
@@ -90,6 +93,13 @@ Web App บน Google Apps Script + Google Sheets สำหรับสแกน
 - ตั้งค่าเครื่องพิมพ์: A4, Scale 100%, ปิด Headers/Footers
 - ป้าย 5×6 ซม. แผ่นละ 12 ดวง แนะนำสติกเกอร์กันน้ำหรือเคลือบใส
 - QR เป็นลิงก์ `WEBAPP_URL?id=FE-001` → สแกนด้วยกล้องมือถือธรรมดาได้ทันที
+
+### 8) (ไม่บังคับ) สแกนกล้องสดบนมือถือ
+หน้า Apps Script ทำงานในกรอบ (iframe) ของ Google ซึ่งมักไม่อนุญาตให้ใช้กล้องสด หน้าสแกนแยกใน `docs/index.html` เปิดกล้องได้เพราะอยู่นอกกรอบนั้น แล้วส่งต่อไปที่ลิงก์ของระบบ (รับเฉพาะลิงก์ `https://script.google.com/.../macros/s/.../exec`)
+1. ผลักโฟลเดอร์ `docs/` ขึ้น GitHub แล้วเปิด **Settings → Pages → Source: Deploy from a branch → Branch: `main`, โฟลเดอร์ `/docs`** → Save
+2. รอสักครู่ จะได้ URL เช่น `https://<ชื่อบัญชี>.github.io/<ชื่อ repo>/`
+3. วาง URL นั้นในชีต Config → `SCANNER_URL` (ถ้าไม่มีแถวนี้ ให้เพิ่มแถว: คอลัมน์ A = `SCANNER_URL`, คอลัมน์ B = URL)
+4. Deploy ไฟล์ Apps Script เป็น New version ใหม่ — ปุ่ม **"เปิดตัวสแกนกล้องสด"** จะขึ้นในหน้าสแกนเมื่อกล้องในหน้านั้นเปิดไม่ได้
 
 ---
 

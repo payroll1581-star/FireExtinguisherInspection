@@ -94,8 +94,15 @@
   .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 17px; flex: 1; min-width: 0; }
   .brand .i { width: 24px; height: 24px; }
   .brand span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .user-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; background: rgba(255,255,255,.18); padding: 5px 12px 5px 9px; border-radius: 99px; max-width: 46%; }
+  .user-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; background: rgba(255,255,255,.18); padding: 5px 12px 5px 9px; border-radius: 99px; max-width: 34%; }
   .user-chip span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lang-btn {
+    flex: none; min-width: 48px; min-height: 44px; padding: 0 14px; border: 1.5px solid rgba(255,255,255,.55); border-radius: 99px;
+    background: rgba(255,255,255,.14); color: #fff; font: 600 13.5px 'Prompt', 'Sarabun', sans-serif; letter-spacing: .02em; cursor: pointer;
+    transition: background .15s, transform .12s var(--ease);
+  }
+  .lang-btn:active { transform: scale(.95); background: rgba(255,255,255,.28); }
+  .lang-btn-hero { position: absolute; top: calc(10px + env(safe-area-inset-top)); right: 14px; }
   .net-dot { width: 10px; height: 10px; border-radius: 50%; background: #8DF0A5; flex: none; box-shadow: 0 0 0 3px rgba(141,240,165,.25); }
   .net-dot.off { background: #FFB74D; box-shadow: 0 0 0 3px rgba(255,183,77,.3); }
 
@@ -143,7 +150,7 @@
 
   /* ============ Login ============ */
   .login { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; background: var(--bg); }
-  .login-hero { background: var(--topbar); color: #fff; padding: calc(44px + env(safe-area-inset-top)) 24px 72px; text-align: center; }
+  .login-hero { position: relative; background: var(--topbar); color: #fff; padding: calc(44px + env(safe-area-inset-top)) 24px 72px; text-align: center; }
   .logo-mark { width: 68px; height: 68px; margin: 0 auto 14px; border-radius: 20px; background: rgba(255,255,255,.16); display: flex; align-items: center; justify-content: center; }
   .logo-mark .i { width: 38px; height: 38px; stroke-width: 1.8; }
   .login-hero h1 { font-size: 24px; font-weight: 600; }
@@ -210,7 +217,7 @@
   .stat.active { border-color: var(--red); box-shadow: 0 0 0 3px rgba(198,40,40,.14); }
   .stat .i { width: 20px; height: 20px; color: var(--muted); }
   .card-num { font-size: 28px; font-weight: 700; line-height: 1.15; }
-  .stat .lbl { font-size: 13px; color: var(--muted); }
+  .stat .lbl { font-size: 13px; color: var(--muted); line-height: 1.25; overflow-wrap: anywhere; }
   .stat.s-normal .i, .stat.s-normal .card-num { color: var(--green); }
   .stat.s-damaged .i, .stat.s-damaged .card-num { color: var(--red-ink); }
   .stat.s-expired .i, .stat.s-expired .card-num { color: var(--red-ink); }
@@ -227,7 +234,9 @@
   .list-item .grow { flex: 1; min-width: 0; }
   .list-item .t { font-weight: 700; font-family: 'Prompt', sans-serif; font-size: 1.03rem; }
   .list-item .s { font-size: .85rem; color: var(--muted); }
-  .list-item .side { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+  .list-item .side { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; max-width: 45%; }
+  .list-item .side .chip { white-space: normal; text-align: left; }
+  #dash-inspectors { overflow-x: auto; }
   table.stats { width: 100%; border-collapse: collapse; font-size: 14px; }
   table.stats th, table.stats td { padding: 9px 6px; border-bottom: 1px solid var(--line); text-align: left; }
   table.stats th { color: var(--muted); font-weight: 500; font-size: 13px; }
@@ -252,7 +261,10 @@
     flex: 1; min-height: var(--nav-h); border: 0; background: none; font-size: 12.5px; color: var(--muted);
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; cursor: pointer; position: relative;
   }
+  .bottomnav button { min-width: 0; padding: 0 2px; line-height: 1.2; text-align: center; }
+  .bottomnav button span { max-width: 100%; overflow-wrap: anywhere; }
   .bottomnav button .i { width: 24px; height: 24px; }
+  @media (max-width: 360px) { .bottomnav button { font-size: 11.5px; } }
   .bottomnav button.active { color: var(--red-ink); font-weight: 600; }
   .bottomnav button.active::before { content: ''; position: absolute; top: 0; width: 36px; height: 3px; border-radius: 0 0 4px 4px; background: var(--red); }
 
@@ -283,6 +295,7 @@
     .btn-outline:hover, .list-item:hover, .stat:hover, .tabs button:not(.active):hover { border-color: var(--red); }
     .btn-primary:hover:not(:disabled) { background: var(--red-press); }
     .bottomnav button:hover { color: var(--text); }
+    .lang-btn:hover { background: rgba(255,255,255,.26); }
   }
   @media (max-height: 520px) and (orientation: landscape) {
     :root { --topbar-h: 48px; --nav-h: 52px; }

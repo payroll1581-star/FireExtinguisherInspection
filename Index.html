@@ -10,7 +10,7 @@
   <?!= include('Styles'); ?>
   <?!= include('Print'); ?>
 </head>
-<body data-view="login" data-initial-id="<?= initialId ?>" data-initial-view="<?= initialView ?>" data-base-url="<?= baseUrl ?>" data-app-name="<?= appName ?>">
+<body data-view="login" data-initial-id="<?= initialId ?>" data-initial-view="<?= initialView ?>" data-base-url="<?= baseUrl ?>" data-scanner-url="<?= scannerUrl ?>" data-app-name="<?= appName ?>">
 
   <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
     <defs>
@@ -42,17 +42,18 @@
   </svg>
 
   <header class="topbar no-print">
-    <div class="brand"><svg class="i" aria-hidden="true"><use href="#i-ext"/></svg><span id="brand-name">ตรวจถังดับเพลิง</span></div>
+    <div class="brand"><svg class="i" aria-hidden="true"><use href="#i-ext"/></svg><span id="brand-name" data-i18n="brand.default">ตรวจถังดับเพลิง</span></div>
     <div class="user-chip" id="user-chip" hidden></div>
-    <span class="net-dot" id="net-dot" title="สถานะเครือข่าย"></span>
+    <button type="button" class="lang-btn" data-lang-toggle>EN</button>
+    <span class="net-dot" id="net-dot" data-i18n-attr="title:net.title" title="สถานะเครือข่าย"></span>
   </header>
   <div class="banner warn no-print" id="inapp-banner" hidden>
     <svg class="i" aria-hidden="true"><use href="#i-alert"/></svg>
-    <div>คุณกำลังเปิดจากแอปแชท (เช่น LINE/Facebook) กล้องอาจใช้ไม่ได้ — แตะ ⋯ แล้วเลือก <b>“เปิดในเบราว์เซอร์”</b> (Chrome/Safari)</div>
+    <div data-i18n-html="inapp.msg">คุณกำลังเปิดจากแอปแชท (เช่น LINE/Facebook) กล้องอาจใช้ไม่ได้ — แตะ ⋯ แล้วเลือก <b>“เปิดในเบราว์เซอร์”</b> (Chrome/Safari)</div>
   </div>
   <div class="banner warn no-print" id="offline-banner" hidden>
     <svg class="i" aria-hidden="true"><use href="#i-wifioff"/></svg>
-    <div>ออฟไลน์ — ผลตรวจจะถูกเก็บไว้ในเครื่องและส่งอัตโนมัติเมื่อมีสัญญาณ</div>
+    <div data-i18n="offline.msg">ออฟไลน์ — ผลตรวจจะถูกเก็บไว้ในเครื่องและส่งอัตโนมัติเมื่อมีสัญญาณ</div>
   </div>
   <div class="banner info no-print" id="queue-banner" hidden role="status"></div>
 
@@ -60,19 +61,20 @@
     <!-- ============ Login ============ -->
     <section class="view login" id="view-login" hidden>
       <div class="login-hero">
+        <button type="button" class="lang-btn lang-btn-hero" data-lang-toggle>EN</button>
         <div class="logo-mark"><svg class="i" aria-hidden="true"><use href="#i-ext"/></svg></div>
         <h1><?= appName ?></h1>
-        <p>ระบบตรวจเช็คถังดับเพลิงออนไลน์</p>
+        <p data-i18n="login.sub">ระบบตรวจเช็คถังดับเพลิงออนไลน์</p>
       </div>
       <div class="login-card">
-        <label class="field" for="login-user">ชื่อผู้ใช้</label>
-        <select id="login-user"><option value="">กำลังโหลดรายชื่อ...</option></select>
-        <label class="field" for="login-pin">PIN (ตัวเลข 4–6 หลัก)</label>
+        <label class="field" for="login-user" data-i18n="login.user">ชื่อผู้ใช้</label>
+        <select id="login-user"><option value="" data-i18n="login.userLoading">กำลังโหลดรายชื่อ...</option></select>
+        <label class="field" for="login-pin" data-i18n="login.pin">PIN (ตัวเลข 4–6 หลัก)</label>
         <input id="login-pin" class="pin-input" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="current-password" aria-describedby="login-msg" placeholder="••••••">
         <p class="form-msg" id="login-msg" role="alert"></p>
-        <button class="btn btn-primary" id="login-btn" type="button">เข้าสู่ระบบ</button>
+        <button class="btn btn-primary" id="login-btn" type="button" data-i18n="login.btn">เข้าสู่ระบบ</button>
       </div>
-      <p class="login-foot">ลืม PIN หรือบัญชีถูกล็อก? ติดต่อผู้ดูแลระบบ</p>
+      <p class="login-foot" data-i18n="login.foot">ลืม PIN หรือบัญชีถูกล็อก? ติดต่อผู้ดูแลระบบ</p>
     </section>
 
     <!-- ============ Home ============ -->
@@ -80,38 +82,41 @@
       <div class="muted" id="home-greet"></div>
       <div class="stack" style="margin-top:10px">
         <button class="btn btn-primary btn-big" id="home-scan" type="button">
-          <svg class="i" aria-hidden="true"><use href="#i-scan"/></svg>สแกน QR Code ถังดับเพลิง
-          <small>เล็งกล้องไปที่ป้าย QR บนถัง</small>
+          <svg class="i" aria-hidden="true"><use href="#i-scan"/></svg><span data-i18n="home.scan">สแกน QR Code ถังดับเพลิง</span>
+          <small data-i18n="home.scanHint">เล็งกล้องไปที่ป้าย QR บนถัง</small>
         </button>
         <div class="card">
-          <label class="field" for="manual-id" style="margin-top:0">หรือพิมพ์รหัสถัง (กรณี QR ชำรุด)</label>
+          <label class="field" for="manual-id" style="margin-top:0" data-i18n="home.manualLabel">หรือพิมพ์รหัสถัง (กรณี QR ชำรุด)</label>
           <div class="home-id-row">
-            <input id="manual-id" type="text" autocapitalize="characters" autocomplete="off" placeholder="เช่น FE-001" maxlength="40">
-            <button class="btn btn-outline" id="manual-go" type="button">ตรวจ</button>
+            <input id="manual-id" type="text" autocapitalize="characters" autocomplete="off" placeholder="เช่น FE-001" data-i18n-attr="placeholder:home.manualPh" maxlength="40">
+            <button class="btn btn-outline" id="manual-go" type="button" data-i18n="home.manualGo">ตรวจ</button>
           </div>
-          <p class="muted small" style="margin:8px 0 0">การพิมพ์รหัสเองจะถูกบันทึกเป็น <span class="chip MANUAL"><svg class="i" aria-hidden="true"><use href="#i-keyboard"/></svg>MANUAL</span></p>
+          <p class="muted small" style="margin:8px 0 0"><span data-i18n="home.manualNote">การพิมพ์รหัสเองจะถูกบันทึกเป็น</span> <span class="chip MANUAL"><svg class="i" aria-hidden="true"><use href="#i-keyboard"/></svg>MANUAL</span></p>
         </div>
         <div class="card" id="home-progress"></div>
         <div id="home-failed"></div>
         <div class="stack" id="home-admin" hidden>
-          <h3>ผู้ดูแลระบบ</h3>
-          <button class="btn btn-outline" id="home-log" type="button"><svg class="i" aria-hidden="true"><use href="#i-list"/></svg>ประวัติการตรวจทั้งหมด</button>
-          <button class="btn btn-outline" id="home-print" type="button"><svg class="i" aria-hidden="true"><use href="#i-printer"/></svg>พิมพ์ป้าย QR Code</button>
+          <h3 data-i18n="home.admin">ผู้ดูแลระบบ</h3>
+          <button class="btn btn-outline" id="home-log" type="button"><svg class="i" aria-hidden="true"><use href="#i-list"/></svg><span data-i18n="home.log">ประวัติการตรวจทั้งหมด</span></button>
+          <button class="btn btn-outline" id="home-print" type="button"><svg class="i" aria-hidden="true"><use href="#i-printer"/></svg><span data-i18n="home.print">พิมพ์ป้าย QR Code</span></button>
         </div>
       </div>
     </section>
 
     <!-- ============ Scan ============ -->
     <section class="view wrap" id="view-scan" hidden>
-      <h2>สแกน QR Code</h2>
+      <h2 data-i18n="scan.title">สแกน QR Code</h2>
       <div id="reader"></div>
       <div id="reader-file" hidden></div>
-      <p class="muted center" id="scan-msg" style="margin:12px 0">กำลังเปิดกล้อง...</p>
+      <p class="muted center" id="scan-msg" style="margin:12px 0 4px">กำลังเปิดกล้อง...</p>
+      <p class="muted small center" id="scan-detail" hidden style="margin:0 0 10px;word-break:break-word"></p>
       <div class="stack">
-        <label class="btn btn-outline file-btn"><svg class="i" aria-hidden="true"><use href="#i-camera"/></svg>ถ่ายรูป QR แทน (ถ้ากล้องสดใช้ไม่ได้)
+        <button class="btn btn-primary" id="scan-retry" type="button" hidden data-i18n="scan.retry">ลองเปิดกล้องอีกครั้ง</button>
+        <a class="btn btn-primary" id="scan-live" href="#" target="_blank" rel="noopener" hidden style="text-decoration:none;text-align:center"><span data-i18n="scan.live">เปิดตัวสแกนกล้องสด</span></a>
+        <label class="btn btn-outline file-btn" id="scan-photo-btn"><svg class="i" aria-hidden="true"><use href="#i-camera"/></svg><span data-i18n="scan.photo">ถ่ายรูป QR แทน (ถ้ากล้องสดใช้ไม่ได้)</span>
           <input type="file" accept="image/*" capture="environment" id="scan-file">
         </label>
-        <button class="btn btn-ghost" id="scan-cancel" type="button">ยกเลิก</button>
+        <button class="btn btn-ghost" id="scan-cancel" type="button" data-i18n="common.cancel">ยกเลิก</button>
       </div>
     </section>
 
@@ -124,33 +129,33 @@
     <!-- ============ Dashboard ============ -->
     <section class="view wrap" id="view-dashboard" hidden>
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-        <h2 style="margin:0">ภาพรวมถังดับเพลิง</h2>
-        <button class="btn btn-outline btn-sm" id="dash-refresh" type="button"><svg class="i" aria-hidden="true"><use href="#i-refresh"/></svg>รีเฟรช</button>
+        <h2 style="margin:0" data-i18n="dash.title">ภาพรวมถังดับเพลิง</h2>
+        <button class="btn btn-outline btn-sm" id="dash-refresh" type="button"><svg class="i" aria-hidden="true"><use href="#i-refresh"/></svg><span data-i18n="dash.refresh">รีเฟรช</span></button>
       </div>
       <p class="muted small" id="dash-updated" style="margin:4px 0 12px"></p>
       <div class="filters">
-        <select id="f-building" aria-label="อาคาร"></select>
-        <select id="f-floor" aria-label="ชั้น"></select>
+        <select id="f-building" aria-label="อาคาร" data-i18n-attr="aria-label:dash.building"></select>
+        <select id="f-floor" aria-label="ชั้น" data-i18n-attr="aria-label:dash.floor"></select>
       </div>
       <div class="card" style="margin-top:12px">
-        <div style="display:flex;justify-content:space-between;align-items:baseline"><b>ความคืบหน้าเดือนนี้</b><span id="dash-progress-text"></span></div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline"><b data-i18n="dash.progress">ความคืบหน้าเดือนนี้</b><span id="dash-progress-text"></span></div>
         <div class="progress"><div id="dash-progress-bar" style="width:0"></div></div>
       </div>
       <div class="stat-grid" id="dash-stats" style="margin-top:12px"></div>
       <div class="tabs" id="dash-tabs"></div>
       <div id="dash-list"></div>
       <div id="dash-admin" hidden>
-        <h3>สรุปรายผู้ตรวจ (เดือนนี้)</h3>
+        <h3 data-i18n="dash.inspectors">สรุปรายผู้ตรวจ (เดือนนี้)</h3>
         <div class="card" id="dash-inspectors"></div>
       </div>
     </section>
 
     <!-- ============ Admin log ============ -->
     <section class="view wrap" id="view-log" hidden>
-      <h2>ประวัติการตรวจ</h2>
+      <h2 data-i18n="log.title">ประวัติการตรวจ</h2>
       <div class="filters">
-        <input type="month" id="log-month" aria-label="เดือน">
-        <input type="text" id="log-search" placeholder="ค้นหารหัส/ผู้ตรวจ" aria-label="ค้นหา">
+        <input type="month" id="log-month" aria-label="เดือน" data-i18n-attr="aria-label:log.month">
+        <input type="text" id="log-search" placeholder="ค้นหารหัส/ผู้ตรวจ" aria-label="ค้นหา" data-i18n-attr="placeholder:log.searchPh;aria-label:log.search">
       </div>
       <p class="muted small" id="log-summary" style="margin:10px 0 0"></p>
       <div id="log-list"></div>
@@ -160,39 +165,40 @@
   <!-- ============ Print (ดู Print.html) ============ -->
   <section class="view" id="view-print" hidden>
     <div class="wrap no-print">
-      <h2>พิมพ์ป้าย QR Code</h2>
+      <h2 data-i18n="print.title">พิมพ์ป้าย QR Code</h2>
       <div class="card">
-        <label class="field" for="print-building" style="margin-top:0">อาคาร</label>
-        <select id="print-building"><option value="">ทุกอาคาร</option></select>
+        <label class="field" for="print-building" style="margin-top:0" data-i18n="print.building">อาคาร</label>
+        <select id="print-building"><option value="" data-i18n="print.all">ทุกอาคาร</option></select>
         <p class="muted small" id="print-info"></p>
         <p class="notice warn" id="print-warn" hidden></p>
         <div class="btn-row" style="margin-top:10px">
-          <button class="btn btn-primary" id="print-go" type="button"><svg class="i" aria-hidden="true"><use href="#i-printer"/></svg>พิมพ์</button>
-          <button class="btn btn-outline" id="print-back" type="button">กลับ</button>
+          <button class="btn btn-primary" id="print-go" type="button"><svg class="i" aria-hidden="true"><use href="#i-printer"/></svg><span data-i18n="print.go">พิมพ์</span></button>
+          <button class="btn btn-outline" id="print-back" type="button" data-i18n="print.back">กลับ</button>
         </div>
-        <p class="muted small">ป้ายขนาด 5×6 ซม. · A4 แผ่นละ 12 ดวง · ตั้งค่าพิมพ์: ขนาดกระดาษ A4, Scale 100%, ปิด Headers/Footers · แนะนำสติกเกอร์กันน้ำหรือเคลือบใส</p>
+        <p class="muted small" data-i18n="print.note">ป้ายขนาด 5×6 ซม. · A4 แผ่นละ 12 ดวง · ตั้งค่าพิมพ์: ขนาดกระดาษ A4, Scale 100%, ปิด Headers/Footers · แนะนำสติกเกอร์กันน้ำหรือเคลือบใส</p>
       </div>
     </div>
     <div id="print-sheets"></div>
   </section>
 
   <nav class="bottomnav no-print" id="bottomnav" hidden>
-    <button type="button" data-nav="home"><svg class="i" aria-hidden="true"><use href="#i-scan"/></svg>ตรวจ</button>
-    <button type="button" data-nav="dashboard"><svg class="i" aria-hidden="true"><use href="#i-chart"/></svg>Dashboard</button>
-    <button type="button" data-nav="log" data-admin hidden><svg class="i" aria-hidden="true"><use href="#i-list"/></svg>ประวัติ</button>
-    <button type="button" data-nav="logout"><svg class="i" aria-hidden="true"><use href="#i-logout"/></svg>ออก</button>
+    <button type="button" data-nav="home"><svg class="i" aria-hidden="true"><use href="#i-scan"/></svg><span data-i18n="nav.inspect">ตรวจ</span></button>
+    <button type="button" data-nav="dashboard"><svg class="i" aria-hidden="true"><use href="#i-chart"/></svg><span data-i18n="nav.dashboard">Dashboard</span></button>
+    <button type="button" data-nav="log" data-admin hidden><svg class="i" aria-hidden="true"><use href="#i-list"/></svg><span data-i18n="nav.log">ประวัติ</span></button>
+    <button type="button" data-nav="logout"><svg class="i" aria-hidden="true"><use href="#i-logout"/></svg><span data-i18n="nav.logout">ออก</span></button>
   </nav>
 
   <div class="modal no-print" id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <div class="modal-box">
-      <div class="modal-head"><h2 id="modal-title" style="margin:0"></h2><button type="button" id="modal-close" aria-label="ปิด"><svg class="i" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+      <div class="modal-head"><h2 id="modal-title" style="margin:0"></h2><button type="button" id="modal-close" aria-label="ปิด" data-i18n-attr="aria-label:common.close"><svg class="i" aria-hidden="true"><use href="#i-close"/></svg></button></div>
       <div id="modal-body"></div>
     </div>
   </div>
-  <div class="loading no-print" id="loading" hidden role="status" aria-live="polite"><div class="spinner"></div><div id="loading-text">กำลังโหลด...</div></div>
+  <div class="loading no-print" id="loading" hidden role="status" aria-live="polite"><div class="spinner"></div><div id="loading-text" data-i18n="common.loading">กำลังโหลด...</div></div>
   <div class="toast no-print" id="toast" role="status" aria-live="polite"></div>
 
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <?!= include('I18n'); ?>
   <?!= include('App'); ?>
 </body>
 </html>

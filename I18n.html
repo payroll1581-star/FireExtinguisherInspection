@@ -1,0 +1,546 @@
+<script>
+/* I18n.html — พจนานุกรมสองภาษา (ไทย/อังกฤษ) และตัวช่วยแปลของฝั่งหน้าเว็บ
+   - ภาษาเริ่มต้นเป็นไทย จำค่าที่ผู้ใช้เลือกไว้ใน localStorage (คีย์ fe_lang)
+   - ค่าในพจนานุกรมที่ขึ้นต้นด้วยตัวแปร {x} ถูกแทนด้วย t(key, {x: ...})
+   - ค่าที่มี "|" แยกรูปเอกพจน์|พหูพจน์ (เฉพาะอังกฤษ) เลือกตาม params.n
+   - ผู้เรียกต้อง esc() ค่าที่จะลงใน innerHTML เอง */
+window.I18n = (function () {
+  'use strict';
+
+  var LS_KEY = 'fe_lang';
+
+  var TH = {
+    'brand.default': 'ตรวจถังดับเพลิง',
+    'net.title': 'สถานะเครือข่าย',
+    'common.cancel': 'ยกเลิก',
+    'common.loading': 'กำลังโหลด...',
+    'common.close': 'ปิด',
+    'inapp.msg': 'คุณกำลังเปิดจากแอปแชท (เช่น LINE/Facebook) กล้องอาจใช้ไม่ได้ — แตะ ⋯ แล้วเลือก <b>“เปิดในเบราว์เซอร์”</b> (Chrome/Safari)',
+    'offline.msg': 'ออฟไลน์ — ผลตรวจจะถูกเก็บไว้ในเครื่องและส่งอัตโนมัติเมื่อมีสัญญาณ',
+    'lang.switchTo': 'Switch to English',
+
+    'login.sub': 'ระบบตรวจเช็คถังดับเพลิงออนไลน์',
+    'login.user': 'ชื่อผู้ใช้',
+    'login.userLoading': 'กำลังโหลดรายชื่อ...',
+    'login.userPick': '— เลือกชื่อของคุณ —',
+    'login.userFail': '(โหลดรายชื่อไม่ได้)',
+    'login.pin': 'PIN (ตัวเลข 4–6 หลัก)',
+    'login.btn': 'เข้าสู่ระบบ',
+    'login.checking': 'กำลังตรวจสอบ...',
+    'login.foot': 'ลืม PIN หรือบัญชีถูกล็อก? ติดต่อผู้ดูแลระบบ',
+    'login.noUsers': 'ยังไม่มีผู้ใช้ในระบบ — ผู้ดูแลต้องเพิ่มผู้ใช้จากเมนูใน Google Sheet',
+    'login.needNet': 'ต้องเชื่อมต่ออินเทอร์เน็ตเพื่อเข้าสู่ระบบ',
+    'login.needUser': 'กรุณาเลือกชื่อผู้ใช้',
+    'login.pinFormat': 'PIN ต้องเป็นตัวเลข 4–6 หลัก',
+    'auth.expired': 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่ (ข้อมูลที่รอส่งยังอยู่ในเครื่อง)',
+    'logout.confirmQueue': 'ยังมีผลตรวจรอส่ง {n} รายการ (จะถูกเก็บไว้ในเครื่องและส่งเมื่อคุณเข้าสู่ระบบครั้งถัดไป)\n\nออกจากระบบหรือไม่?',
+    'logout.confirm': 'ออกจากระบบหรือไม่?',
+
+    'nav.inspect': 'ตรวจ',
+    'nav.dashboard': 'Dashboard',
+    'nav.log': 'ประวัติ',
+    'nav.logout': 'ออก',
+
+    'home.scan': 'สแกน QR Code ถังดับเพลิง',
+    'home.scanHint': 'เล็งกล้องไปที่ป้าย QR บนถัง',
+    'home.manualLabel': 'หรือพิมพ์รหัสถัง (กรณี QR ชำรุด)',
+    'home.manualPh': 'เช่น FE-001',
+    'home.manualGo': 'ตรวจ',
+    'home.manualNote': 'การพิมพ์รหัสเองจะถูกบันทึกเป็น',
+    'home.admin': 'ผู้ดูแลระบบ',
+    'home.log': 'ประวัติการตรวจทั้งหมด',
+    'home.print': 'พิมพ์ป้าย QR Code',
+    'home.greet': 'สวัสดี {name}',
+    'home.doneMonth': 'ตรวจแล้วเดือนนี้',
+    'home.tanks': '<b>{done}</b> / {total} ถัง',
+    'home.dmg': 'ชำรุด {n}',
+    'home.exp': 'หมดอายุ/ใกล้หมด {n}',
+    'home.asOf': 'ข้อมูล ณ {t}',
+    'manual.invalid': 'รหัสถังไม่ถูกต้อง (ใช้ A-Z, 0-9, - หรือ _)',
+
+    'scan.title': 'สแกน QR Code',
+    'scan.photo': 'ถ่ายรูป QR แทน (ถ้ากล้องสดใช้ไม่ได้)',
+    'scan.opening': 'กำลังเปิดกล้อง...',
+    'scan.aim': 'เล็งกล้องไปที่ QR Code บนถังดับเพลิง',
+    'scan.libFail': 'โหลดตัวสแกนไม่สำเร็จ — ใช้ปุ่ม "ถ่ายรูป QR" หรือกลับไปพิมพ์รหัสแทน',
+    'scan.noCam': 'เบราว์เซอร์นี้เปิดกล้องสดไม่ได้ — กดปุ่ม "ถ่ายรูป QR แทน" ด้านล่าง',
+    'scan.deniedFull': 'ไม่ได้รับอนุญาตให้ใช้กล้อง — กดปุ่ม <b>"ถ่ายรูป QR แทน"</b> ด้านล่าง หรือสแกนด้วยแอปกล้องของมือถือได้เลย',
+    'scan.live': 'เปิดตัวสแกนกล้องสด',
+    'scan.policyBlocked': 'หน้านี้ทำงานในกรอบของ Google ซึ่งไม่เปิดให้ใช้กล้องสด (ไม่ใช่ปัญหาที่ตั้งค่าในมือถือ) — กดปุ่ม <b>"ถ่ายรูป QR แทน"</b> ด้านล่าง ถ่ายให้ QR เต็มกรอบและชัด หรือสแกนด้วยแอปกล้องของมือถือ',
+    'scan.inapp': 'แอปนี้ (เช่น LINE/Facebook) บล็อกกล้องสด — กดปุ่ม <b>"ถ่ายรูป QR แทน"</b> ด้านล่าง หรือเปิดลิงก์นี้ใน Chrome / Safari',
+    'scan.permDenied': 'กล้องถูกปิดสิทธิ์ไว้ — เปิดสิทธิ์กล้องให้เว็บนี้ในตั้งค่าเบราว์เซอร์ (แตะไอคอนแม่กุญแจที่แถบที่อยู่) แล้วกด "ลองเปิดกล้องอีกครั้ง" หรือกดปุ่ม <b>"ถ่ายรูป QR แทน"</b> ด้านล่าง',
+    'scan.blockedCtx': 'เบราว์เซอร์ไม่อนุญาตให้หน้านี้เปิดกล้องสด — กดปุ่ม <b>"ถ่ายรูป QR แทน"</b> ด้านล่างได้เลย (ใช้ได้ปกติ) หรือลองเปิดลิงก์ใน Chrome / Safari',
+    'scan.failFull': 'เปิดกล้องสดไม่ได้ — กดปุ่ม <b>"ถ่ายรูป QR แทน"</b> ด้านล่าง หรือสแกนด้วยแอปกล้องของมือถือได้เลย',
+    'scan.failShort': 'เปิดกล้องสดไม่ได้ — กดปุ่ม "ถ่ายรูป QR แทน" ด้านล่าง',
+    'scan.retry': 'ลองเปิดกล้องอีกครั้ง',
+    'scan.slow': 'กล้องยังไม่แสดงภาพ — ตรวจว่าอนุญาตให้ใช้กล้องแล้ว ปิดแอปอื่นที่ใช้กล้องอยู่ แล้วกด "ลองเปิดกล้องอีกครั้ง" หรือใช้ปุ่ม "ถ่ายรูป QR แทน" ด้านล่าง',
+    'scan.notOurs': 'QR นี้ไม่ใช่รหัสถังดับเพลิงของระบบ',
+    'scan.readLibFail': 'โหลดตัวอ่าน QR ไม่สำเร็จ',
+    'scan.readingImg': 'กำลังอ่าน QR จากรูป...',
+    'scan.imgFail': 'อ่าน QR จากรูปไม่ได้ ลองถ่ายใหม่ให้ใกล้และชัดขึ้น',
+    'img.readFail': 'อ่านไฟล์รูปไม่ได้',
+
+    'insp.loadingTank': 'กำลังโหลดข้อมูลถัง {id}...',
+    'insp.offlineNotFound': 'ออฟไลน์ และไม่พบรหัส {id} ในข้อมูลที่โหลดไว้ในเครื่อง',
+    'insp.noList': 'ยังไม่มีรายการตรวจสำหรับถังชนิดนี้',
+    'insp.lb': '{size} ปอนด์',
+    'insp.manualChip': 'พิมพ์รหัสเอง',
+    'insp.offlineNote': 'ออฟไลน์: ใช้ข้อมูลที่โหลดไว้ในเครื่อง ผลตรวจจะถูกส่งเมื่อมีสัญญาณ',
+    'insp.doneThisMonth': 'ถังนี้ตรวจแล้วเดือนนี้เมื่อ <b>{t}</b> โดย <b>{by}</b> (ผล: {res})<br>บันทึกซ้ำได้ ระบบจะใช้ผลล่าสุดเป็นสถานะ',
+    'insp.prevFail': 'การตรวจครั้งก่อนไม่ผ่าน: {items}',
+    'insp.listTitle': 'รายการตรวจ ({n} ข้อ)',
+    'insp.repaired': 'ถังนี้ได้รับการซ่อม/เปลี่ยนแล้ว',
+    'insp.photoTitle': 'รูปถ่ายจุดชำรุด (จำเป็น)',
+    'insp.photoBtn': 'ถ่ายรูป',
+    'insp.photoRetake': 'ถ่ายรูปใหม่',
+    'insp.photoAlt': 'รูปจุดชำรุด',
+    'insp.remarks': 'หมายเหตุ (ถ้ามี)',
+    'insp.remarksPh': 'เช่น เปลี่ยนซีลแล้ว, ย้ายตำแหน่ง, แจ้งช่างแล้ว',
+    'insp.count': 'ตอบแล้ว {a} / {n} ข้อ',
+    'insp.needPhoto': 'ถ่ายรูปจุดชำรุดก่อนบันทึก',
+    'insp.saveFail': 'บันทึกผล: ชำรุด',
+    'insp.savePass': 'บันทึกผล: ผ่านทุกข้อ',
+    'insp.resizing': 'กำลังย่อรูป...',
+    'insp.answerAll': 'กรุณาตอบให้ครบทุกข้อ',
+    'insp.photoToast': 'กรุณาถ่ายรูปจุดที่ชำรุด',
+    'insp.saving': 'กำลังบันทึก...',
+    'insp.storageFull': 'พื้นที่ในเครื่องเต็ม บันทึกออฟไลน์ไม่ได้ — ลองลดจำนวนรูปที่รอส่ง',
+    'insp.savedLocalLogin': 'บันทึกไว้ในเครื่องแล้ว — เข้าสู่ระบบใหม่เพื่อส่งข้อมูล',
+    'insp.confirmLeave': 'ยังไม่ได้บันทึกผลตรวจ ต้องการยกเลิกการตรวจถัง {id} หรือไม่?',
+    'res.pass': 'ผ่าน',
+    'res.fail': 'ไม่ผ่าน',
+
+    'done.queued': 'บันทึกไว้ในเครื่องแล้ว',
+    'done.saved': 'บันทึกผลตรวจเรียบร้อย',
+    'done.queuedNote': 'ไม่มีสัญญาณขณะนี้ ระบบจะส่งข้อมูลขึ้น Google Sheets อัตโนมัติเมื่อกลับมาออนไลน์ (เปิดหน้านี้ค้างไว้)',
+    'done.emailed': 'ระบบส่งอีเมลแจ้งผู้รับผิดชอบพร้อมรูปแล้ว',
+    'done.next': 'สแกนถังถัดไป',
+    'done.home': 'กลับหน้าหลัก',
+
+    'queue.waiting': 'รอส่ง <b>{n}</b> รายการ',
+    'queue.sendNow': 'ส่งตอนนี้',
+    'queue.sent': 'ส่งผลตรวจที่ค้างไว้ {n} รายการแล้ว',
+    'queue.stillOffline': 'ยังออฟไลน์อยู่',
+    'failed.title': 'ส่งข้อมูลไม่สำเร็จ {n} รายการ',
+    'failed.redo': 'กรุณาตรวจถังเหล่านี้ใหม่อีกครั้ง',
+    'failed.clear': 'รับทราบ ล้างรายการ',
+
+    'st.NORMAL': 'ปกติ',
+    'st.DAMAGED': 'ชำรุด',
+    'st.PENDING': 'รอการตรวจ',
+    'ex.EXPIRED': 'หมดอายุ',
+    'ex.SOON': 'ใกล้หมดอายุ',
+    'kind.service': 'บำรุงรักษา',
+    'kind.expiry': 'หมดอายุ/ทดสอบแรงดัน',
+    'days.over': 'เลยกำหนด {n} วัน',
+    'days.today': 'ครบกำหนดวันนี้',
+    'days.left': 'อีก {n} วัน',
+    'floor': 'ชั้น {f}',
+    'unit.pm': 'น.',
+
+    'dash.title': 'ภาพรวมถังดับเพลิง',
+    'dash.refresh': 'รีเฟรช',
+    'dash.building': 'อาคาร',
+    'dash.floor': 'ชั้น',
+    'dash.progress': 'ความคืบหน้าเดือนนี้',
+    'dash.inspectors': 'สรุปรายผู้ตรวจ (เดือนนี้)',
+    'dash.allBuildings': 'ทุกอาคาร',
+    'dash.allFloors': 'ทุกชั้น',
+    'dash.updatedOnline': 'ข้อมูล ณ {t} · อัปเดตอัตโนมัติทุก 60 วินาที',
+    'dash.updatedOffline': 'ข้อมูลออฟไลน์ {t} · อัปเดตอัตโนมัติทุก 60 วินาที',
+    'dash.progressText': '<b>{done}</b> / {total} ถัง ({pct}%)',
+    'stat.all': 'ทั้งหมด',
+    'tab.problem': 'มีปัญหา ({n})',
+    'tab.pending': 'รอตรวจ ({n})',
+    'tab.all': 'ทั้งหมด ({n})',
+    'list.problem': 'มีปัญหา',
+    'list.all': 'ทั้งหมด',
+    'dash.lastInspected': 'ตรวจล่าสุด {t} · {by}',
+    'dash.never': 'ยังไม่เคยตรวจ',
+    'dash.emptyList': 'ไม่มีรายการในหมวดนี้',
+    'stats.inspector': 'ผู้ตรวจ',
+    'stats.count': 'ครั้ง',
+    'stats.tanks': 'ถัง',
+    'stats.fail': 'ไม่ผ่าน',
+    'stats.manual': 'พิมพ์รหัสเอง',
+    'stats.note': 'สัดส่วนพิมพ์รหัสเองเกิน 20% จะแสดงเป็นสีแดง ควรตรวจสอบป้าย QR หรือวิธีการตรวจ',
+    'stats.empty': 'ยังไม่มีการตรวจในเดือนนี้',
+
+    'hist.title': 'ประวัติการตรวจ',
+    'hist.by': 'โดย {by}',
+    'hist.repaired': 'ซ่อม/เปลี่ยนแล้ว',
+    'hist.failedItems': 'ไม่ผ่าน: {items}',
+    'hist.view': 'ดูรูป',
+    'hist.hasPhoto': 'มีรูป (ผู้ดูแลระบบดูได้)',
+    'hist.empty': 'ยังไม่มีประวัติการตรวจ',
+    'hist.needNet': 'ต้องเชื่อมต่ออินเทอร์เน็ตเพื่อดูประวัติ',
+    'photo.title': 'รูปจุดชำรุด',
+    'photo.loading': 'กำลังโหลดรูป...',
+
+    'log.title': 'ประวัติการตรวจ',
+    'log.month': 'เดือน',
+    'log.search': 'ค้นหา',
+    'log.searchPh': 'ค้นหารหัส/ผู้ตรวจ',
+    'log.needNet': 'ต้องเชื่อมต่ออินเทอร์เน็ต',
+    'log.summary': 'เดือน {m} · ทั้งหมด {total} ครั้ง',
+    'log.match': ' · ตรงกับคำค้น {n} ครั้ง',
+    'log.showing': ' (แสดง {n} รายการล่าสุด)',
+    'log.empty': 'ไม่มีข้อมูล',
+
+    'print.title': 'พิมพ์ป้าย QR Code',
+    'print.building': 'อาคาร',
+    'print.all': 'ทุกอาคาร',
+    'print.go': 'พิมพ์',
+    'print.back': 'กลับ',
+    'print.note': 'ป้ายขนาด 5×6 ซม. · A4 แผ่นละ 12 ดวง · ตั้งค่าพิมพ์: ขนาดกระดาษ A4, Scale 100%, ปิด Headers/Footers · แนะนำสติกเกอร์กันน้ำหรือเคลือบใส',
+    'print.libFail': 'โหลดไลบรารีสร้าง QR ไม่สำเร็จ',
+    'print.adminOnly': 'เมนูนี้สำหรับผู้ดูแลระบบเท่านั้น',
+    'print.preparing': 'กำลังเตรียมป้าย...',
+    'print.noUrl': 'ยังไม่ได้ตั้งค่า WEBAPP_URL ในชีต Config — QR จะเปิดหน้าเว็บไม่ได้',
+    'print.devUrl': 'URL ที่ใช้เป็นแบบทดสอบ (/dev) — ควรตั้ง WEBAPP_URL เป็น URL ที่ลงท้ายด้วย /exec',
+    'print.info': '{n} ป้าย · {p} แผ่น A4',
+
+    'err.generic': 'เกิดข้อผิดพลาด',
+    'err.noServer': 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้',
+    'err.noData': 'ไม่ได้รับข้อมูลจากเซิร์ฟเวอร์',
+    'err.network': 'เชื่อมต่อไม่ได้ — ตรวจสอบสัญญาณอินเทอร์เน็ต'
+  };
+
+  var EN = {
+    'brand.default': 'Fire Extinguisher Check',
+    'net.title': 'Network status',
+    'common.cancel': 'Cancel',
+    'common.loading': 'Loading...',
+    'common.close': 'Close',
+    'inapp.msg': 'You are using an in-app browser (e.g. LINE/Facebook), so the camera may not work. Tap ⋯ and choose <b>“Open in browser”</b> (Chrome/Safari).',
+    'offline.msg': 'Offline — results are saved on this device and sent automatically when the signal returns',
+    'lang.switchTo': 'เปลี่ยนเป็นภาษาไทย',
+
+    'login.sub': 'Online fire extinguisher inspection system',
+    'login.user': 'User',
+    'login.userLoading': 'Loading users...',
+    'login.userPick': '— Select your name —',
+    'login.userFail': '(Could not load users)',
+    'login.pin': 'PIN (4–6 digits)',
+    'login.btn': 'Sign in',
+    'login.checking': 'Checking...',
+    'login.foot': 'Forgot your PIN or account locked? Contact the administrator.',
+    'login.noUsers': 'No users yet — an administrator must add users from the Google Sheet menu',
+    'login.needNet': 'An internet connection is required to sign in',
+    'login.needUser': 'Please select a user',
+    'login.pinFormat': 'PIN must be 4–6 digits',
+    'auth.expired': 'Session expired. Please sign in again (pending results are still on this device).',
+    'logout.confirmQueue': '{n} result(s) are still waiting to be sent (they stay on this device and are sent the next time you sign in).\n\nSign out?',
+    'logout.confirm': 'Sign out?',
+
+    'nav.inspect': 'Inspect',
+    'nav.dashboard': 'Dashboard',
+    'nav.log': 'History',
+    'nav.logout': 'Sign out',
+
+    'home.scan': 'Scan extinguisher QR code',
+    'home.scanHint': 'Point the camera at the QR label on the tank',
+    'home.manualLabel': 'Or enter the tank ID (if the QR is damaged)',
+    'home.manualPh': 'e.g. FE-001',
+    'home.manualGo': 'Inspect',
+    'home.manualNote': 'Manually entered IDs are recorded as',
+    'home.admin': 'Administrator',
+    'home.log': 'All inspection history',
+    'home.print': 'Print QR labels',
+    'home.greet': 'Hello, {name}',
+    'home.doneMonth': 'Inspected this month',
+    'home.tanks': '<b>{done}</b> / {total} tanks',
+    'home.dmg': 'Damaged {n}',
+    'home.exp': 'Expired / expiring {n}',
+    'home.asOf': 'As of {t}',
+    'manual.invalid': 'Invalid tank ID (use A-Z, 0-9, - or _)',
+
+    'scan.title': 'Scan QR code',
+    'scan.photo': 'Take a photo of the QR instead (if the live camera is unavailable)',
+    'scan.opening': 'Opening camera...',
+    'scan.aim': 'Point the camera at the QR code on the extinguisher',
+    'scan.libFail': 'Could not load the scanner — use the "photo of QR" button or go back and type the ID',
+    'scan.noCam': 'This browser cannot open the live camera — use the "Take a photo of the QR instead" button below',
+    'scan.deniedFull': 'Camera permission was denied — use the <b>"Take a photo of the QR instead"</b> button below, or scan with your phone\'s camera app',
+    'scan.live': 'Open the live scanner',
+    'scan.policyBlocked': 'This page runs inside a Google frame that does not allow the live camera (it is not a phone-settings problem) — tap <b>"Take a photo of the QR instead"</b> below, keeping the QR large and sharp, or scan with your phone\'s camera app',
+    'scan.inapp': 'This app (e.g. LINE/Facebook) blocks the live camera — tap <b>"Take a photo of the QR instead"</b> below, or open this link in Chrome / Safari',
+    'scan.permDenied': 'Camera access is turned off — allow the camera for this site in your browser settings (tap the padlock icon in the address bar), then tap "Try the camera again", or use <b>"Take a photo of the QR instead"</b> below',
+    'scan.blockedCtx': 'The browser does not let this page open the live camera — just tap <b>"Take a photo of the QR instead"</b> below (it works normally), or try opening the link in Chrome / Safari',
+    'scan.failFull': 'Could not open the live camera — use the <b>"Take a photo of the QR instead"</b> button below, or scan with your phone\'s camera app',
+    'scan.failShort': 'Could not open the live camera — use the "Take a photo of the QR instead" button below',
+    'scan.retry': 'Try the camera again',
+    'scan.slow': 'The camera is not showing an image yet — check that camera permission is allowed, close other apps using the camera, then tap "Try the camera again" or use the "Take a photo of the QR instead" button below',
+    'scan.notOurs': 'This QR is not a fire extinguisher code from this system',
+    'scan.readLibFail': 'Could not load the QR reader',
+    'scan.readingImg': 'Reading QR from the photo...',
+    'scan.imgFail': 'Could not read a QR from the photo. Try again, closer and sharper.',
+    'img.readFail': 'Could not read the image file',
+
+    'insp.loadingTank': 'Loading tank {id}...',
+    'insp.offlineNotFound': 'Offline, and ID {id} is not in the data stored on this device',
+    'insp.noList': 'There is no checklist for this tank type yet',
+    'insp.lb': '{size} lb',
+    'insp.manualChip': 'Manual entry',
+    'insp.offlineNote': 'Offline: using data stored on this device. The result will be sent when the signal returns.',
+    'insp.doneThisMonth': 'This tank was already inspected this month at <b>{t}</b> by <b>{by}</b> (result: {res})<br>You can record it again; the latest result becomes the status.',
+    'insp.prevFail': 'Failed in the previous inspection: {items}',
+    'insp.listTitle': 'Checklist ({n} items)',
+    'insp.repaired': 'This tank has been repaired / replaced',
+    'insp.photoTitle': 'Photo of the damaged part (required)',
+    'insp.photoBtn': 'Take photo',
+    'insp.photoRetake': 'Retake photo',
+    'insp.photoAlt': 'Photo of the damaged part',
+    'insp.remarks': 'Remarks (optional)',
+    'insp.remarksPh': 'e.g. seal replaced, moved, technician notified',
+    'insp.count': 'Answered {a} / {n}',
+    'insp.needPhoto': 'Take a photo of the damage before saving',
+    'insp.saveFail': 'Save result: Damaged',
+    'insp.savePass': 'Save result: All passed',
+    'insp.resizing': 'Resizing photo...',
+    'insp.answerAll': 'Please answer every item',
+    'insp.photoToast': 'Please take a photo of the damaged part',
+    'insp.saving': 'Saving...',
+    'insp.storageFull': 'Device storage is full, so it cannot be saved offline — try reducing the number of pending photos',
+    'insp.savedLocalLogin': 'Saved on this device — sign in again to send it',
+    'insp.confirmLeave': 'The inspection has not been saved. Cancel the inspection of tank {id}?',
+    'res.pass': 'Pass',
+    'res.fail': 'Fail',
+
+    'done.queued': 'Saved on this device',
+    'done.saved': 'Inspection saved',
+    'done.queuedNote': 'There is no signal right now. The result will be sent to Google Sheets automatically when you are back online (keep this page open).',
+    'done.emailed': 'An email with the photo was sent to the responsible people',
+    'done.next': 'Scan next tank',
+    'done.home': 'Back to home',
+
+    'queue.waiting': '<b>{n}</b> waiting to send',
+    'queue.sendNow': 'Send now',
+    'queue.sent': 'Sent {n} pending result(s)',
+    'queue.stillOffline': 'Still offline',
+    'failed.title': '{n} result(s) could not be sent',
+    'failed.redo': 'Please inspect these tanks again',
+    'failed.clear': 'Got it, clear the list',
+
+    'st.NORMAL': 'Normal',
+    'st.DAMAGED': 'Damaged',
+    'st.PENDING': 'Pending',
+    'ex.EXPIRED': 'Expired',
+    'ex.SOON': 'Expiring soon',
+    'kind.service': 'Service due',
+    'kind.expiry': 'Expiry / pressure test',
+    'days.over': '{n} day overdue|{n} days overdue',
+    'days.today': 'Due today',
+    'days.left': 'In {n} day|In {n} days',
+    'floor': 'Floor {f}',
+    'unit.pm': '',
+
+    'dash.title': 'Extinguisher overview',
+    'dash.refresh': 'Refresh',
+    'dash.building': 'Building',
+    'dash.floor': 'Floor',
+    'dash.progress': 'This month\'s progress',
+    'dash.inspectors': 'By inspector (this month)',
+    'dash.allBuildings': 'All buildings',
+    'dash.allFloors': 'All floors',
+    'dash.updatedOnline': 'As of {t} · auto-refresh every 60 seconds',
+    'dash.updatedOffline': 'Offline data {t} · auto-refresh every 60 seconds',
+    'dash.progressText': '<b>{done}</b> / {total} tanks ({pct}%)',
+    'stat.all': 'All',
+    'tab.problem': 'Issues ({n})',
+    'tab.pending': 'To inspect ({n})',
+    'tab.all': 'All ({n})',
+    'list.problem': 'Issues',
+    'list.all': 'All',
+    'dash.lastInspected': 'Last inspected {t} · {by}',
+    'dash.never': 'Never inspected',
+    'dash.emptyList': 'Nothing in this category',
+    'stats.inspector': 'Inspector',
+    'stats.count': 'Checks',
+    'stats.tanks': 'Tanks',
+    'stats.fail': 'Failed',
+    'stats.manual': 'Manual entry',
+    'stats.note': 'A manual-entry share above 20% is shown in red. Check the QR labels or the inspection method.',
+    'stats.empty': 'No inspections this month yet',
+
+    'hist.title': 'Inspection history',
+    'hist.by': 'By {by}',
+    'hist.repaired': 'Repaired / replaced',
+    'hist.failedItems': 'Failed: {items}',
+    'hist.view': 'View photo',
+    'hist.hasPhoto': 'Has a photo (administrators can view)',
+    'hist.empty': 'No inspection history yet',
+    'hist.needNet': 'An internet connection is required to view history',
+    'photo.title': 'Photo of the damaged part',
+    'photo.loading': 'Loading photo...',
+
+    'log.title': 'Inspection history',
+    'log.month': 'Month',
+    'log.search': 'Search',
+    'log.searchPh': 'Search ID / inspector',
+    'log.needNet': 'An internet connection is required',
+    'log.summary': 'Month {m} · {total} inspection in total|Month {m} · {total} inspections in total',
+    'log.match': ' · {n} matching the search',
+    'log.showing': ' (showing the latest {n})',
+    'log.empty': 'No data',
+
+    'print.title': 'Print QR labels',
+    'print.building': 'Building',
+    'print.all': 'All buildings',
+    'print.go': 'Print',
+    'print.back': 'Back',
+    'print.note': 'Labels are 5×6 cm · 12 per A4 sheet · Print settings: A4 paper, Scale 100%, turn off Headers/Footers · waterproof or laminated stickers recommended (labels are printed in Thai)',
+    'print.libFail': 'Could not load the QR generator library',
+    'print.adminOnly': 'This menu is for administrators only',
+    'print.preparing': 'Preparing labels...',
+    'print.noUrl': 'WEBAPP_URL is not set in the Config sheet — the QR codes would not open the web app',
+    'print.devUrl': 'The URL is a test one (/dev) — set WEBAPP_URL to the URL that ends with /exec',
+    'print.info': '{n} label(s) · {p} A4 sheet(s)',
+
+    'err.generic': 'Something went wrong',
+    'err.noServer': 'Cannot reach the server',
+    'err.noData': 'No data received from the server',
+    'err.network': 'Cannot connect — check your internet signal'
+  };
+
+  var DICT = { th: TH, en: EN };
+
+  /* ข้อความที่มาจากเซิร์ฟเวอร์ (ภาษาไทย) → อังกฤษ; ใส่ $1 สำหรับค่าที่จับได้ */
+  var SERVER_EN = [
+    ['กรุณาเลือกชื่อผู้ใช้', 'Please select a user'],
+    ['PIN ต้องเป็นตัวเลข 4–6 หลัก', 'PIN must be 4–6 digits'],
+    [/^ใส่ PIN ผิดเกิน (\d+) ครั้ง บัญชีถูกล็อก 15 นาที$/, 'Wrong PIN more than $1 times. The account is locked for 15 minutes.'],
+    [/^PIN ไม่ถูกต้อง \(ลองได้อีก (\d+) ครั้ง\)$/, 'Incorrect PIN ($1 attempt(s) left)'],
+    ['ยังไม่ได้ติดตั้งระบบ กรุณากดเมนู "ติดตั้งระบบ" ใน Google Sheet', 'The system is not installed yet. Please run the "Install system" menu in the Google Sheet.'],
+    [/^ไม่พบชีต "(.+)" กรุณากดเมนู "ติดตั้งระบบ"$/, 'Sheet "$1" not found. Please run the "Install system" menu.'],
+    ['ไม่รู้จักคำสั่งนี้', 'Unknown command'],
+    ['เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่', 'Session expired. Please sign in again.'],
+    ['เมนูนี้สำหรับผู้ดูแลระบบเท่านั้น', 'This menu is for administrators only'],
+    ['เกิดข้อผิดพลาดในระบบ กรุณาลองใหม่อีกครั้ง', 'A system error occurred. Please try again.'],
+    ['รหัสถังไม่ถูกต้อง', 'Invalid tank ID'],
+    [/^ไม่พบรหัสถัง (.+) ในระบบ \(หรือถูกปลดระวางแล้ว\)$/, 'Tank ID $1 was not found in the system (or has been decommissioned)'],
+    [/^ไม่พบรหัสถัง (.+) ในระบบ$/, 'Tank ID $1 was not found in the system'],
+    ['ข้อมูลไม่ถูกต้อง (uuid)', 'Invalid data (uuid)'],
+    ['ยังไม่มีรายการตรวจสำหรับถังชนิดนี้ (ชีต Checklist)', 'There is no checklist for this tank type yet (Checklist sheet)'],
+    ['กรุณาตอบรายการตรวจให้ครบทุกข้อ', 'Please answer every checklist item'],
+    ['กรุณาถ่ายรูปจุดที่ชำรุดก่อนบันทึก', 'Please take a photo of the damaged part before saving'],
+    ['ระบบกำลังบันทึกข้อมูลของผู้อื่น กรุณาลองใหม่', 'The system is saving someone else\'s data. Please try again.'],
+    ['รูปมีขนาดใหญ่เกินไป', 'The photo is too large'],
+    ['รูปแบบไฟล์รูปไม่ถูกต้อง (ต้องเป็น JPEG)', 'Invalid photo format (must be JPEG)'],
+    ['ไฟล์รูปไม่ใช่ JPEG', 'The photo file is not a JPEG'],
+    ['ยังไม่ได้ตั้งค่าโฟลเดอร์รูป กรุณากดเมนู "ติดตั้งระบบ"', 'The photo folder is not set up. Please run the "Install system" menu.'],
+    ['รหัสรูปไม่ถูกต้อง', 'Invalid photo ID'],
+    ['ไม่พบรูปนี้', 'Photo not found']
+  ];
+
+  /* รายการตรวจเริ่มต้น C1–C7 (ตรงกับ CHECKLIST_DEFAULTS ใน Code.gs) → อังกฤษ */
+  var CHECK_TITLE_EN = {
+    'เกจวัดความดัน': 'Pressure gauge',
+    'สลักและซีล': 'Safety pin and seal',
+    'สายฉีดและหัวฉีด': 'Hose and nozzle',
+    'สภาพตัวถัง': 'Cylinder condition',
+    'ฉลากและป้ายวิธีใช้': 'Label and instructions',
+    'ตำแหน่งติดตั้ง': 'Installation position',
+    'ป้ายสัญลักษณ์': 'Location sign'
+  };
+  var CHECK_HOW_EN = {
+    'เข็มเกจอยู่ในโซนสีเขียว ไม่ต่ำหรือสูงเกิน': 'Needle is in the green zone, not too low or too high',
+    'สลักนิรภัยเสียบอยู่ ซีลไม่ขาด': 'Safety pin is in place and the seal is intact',
+    'ไม่แตก ไม่กรอบ ไม่อุดตัน': 'Not cracked, brittle or blocked',
+    'ไม่บุบ ไม่เป็นสนิม ไม่มีรอยรั่ว': 'No dents, rust or leaks',
+    'ฉลากติดแน่น อ่านออกชัดเจน': 'Label is firmly attached and clearly legible',
+    'หยิบใช้สะดวก ไม่มีสิ่งกีดขวาง ความสูงถูกต้อง': 'Easy to reach, no obstructions, correct mounting height',
+    'มองเห็นป้ายบอกตำแหน่งถังได้ชัด': 'The sign showing the extinguisher location is clearly visible'
+  };
+  var TYPE_EN = {
+    'ผงเคมีแห้ง ABC': 'Dry chemical ABC',
+    'CO2': 'CO2',
+    'โฟม': 'Foam',
+    'น้ำ': 'Water',
+    'สารสะอาด': 'Clean agent'
+  };
+
+  var lang = 'th';
+  try {
+    var saved = JSON.parse(localStorage.getItem(LS_KEY));
+    if (saved === 'en' || saved === 'th') lang = saved;
+  } catch (e) { /* ใช้ค่าเริ่มต้น */ }
+
+  function t(key, params) {
+    var v = DICT[lang][key];
+    if (v === undefined) v = TH[key];
+    if (v === undefined) return key;
+    if (lang === 'en' && v.indexOf('|') !== -1) {
+      var parts = v.split('|');
+      v = params && Number(params.n) === 1 ? parts[0] : parts[1];
+    }
+    if (params) v = v.replace(/\{(\w+)\}/g, function (m, k) { return params[k] === undefined ? m : params[k]; });
+    return v;
+  }
+
+  /* แปลข้อความจากเซิร์ฟเวอร์ (ไทย) ตามภาษาปัจจุบัน; ไม่รู้จัก → คืนค่าเดิม */
+  function srv(msg) {
+    if (lang !== 'en' || !msg) return msg;
+    for (var i = 0; i < SERVER_EN.length; i++) {
+      var rule = SERVER_EN[i];
+      if (typeof rule[0] === 'string') { if (msg === rule[0]) return rule[1]; continue; }
+      var m = msg.match(rule[0]);
+      if (m) return rule[1].replace(/\$(\d)/g, function (x, n) { return m[Number(n)]; });
+    }
+    return msg;
+  }
+
+  function checkTitle(s) { return lang === 'en' && CHECK_TITLE_EN[s] ? CHECK_TITLE_EN[s] : s; }
+  function checkHow(s) { return lang === 'en' && CHECK_HOW_EN[s] ? CHECK_HOW_EN[s] : s; }
+  function typeName(s) { return lang === 'en' && TYPE_EN[s] ? TYPE_EN[s] : s; }
+  /* "ข้อที่ไม่ผ่าน" ในชีตเป็นชื่อรายการคั่นด้วย ", " */
+  function failedItems(s) {
+    if (lang !== 'en' || !s) return s;
+    return String(s).split(', ').map(checkTitle).join(', ');
+  }
+  /* ตำแหน่งที่เซิร์ฟเวอร์ประกอบมาแล้ว (มี "ชั้น X") */
+  function locStr(s) {
+    if (lang !== 'en' || !s) return s;
+    return String(s).replace(/ชั้น (\S+)/g, 'Floor $1');
+  }
+
+  function applyStatic() {
+    var root = document.documentElement;
+    root.lang = lang;
+    Array.prototype.forEach.call(document.querySelectorAll('[data-i18n]'), function (el) {
+      el.textContent = t(el.getAttribute('data-i18n'));
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-i18n-html]'), function (el) {
+      el.innerHTML = t(el.getAttribute('data-i18n-html'));
+    });
+    /* data-i18n-attr="placeholder:key;aria-label:key" */
+    Array.prototype.forEach.call(document.querySelectorAll('[data-i18n-attr]'), function (el) {
+      el.getAttribute('data-i18n-attr').split(';').forEach(function (pair) {
+        var i = pair.indexOf(':');
+        if (i > 0) el.setAttribute(pair.slice(0, i).trim(), t(pair.slice(i + 1).trim()));
+      });
+    });
+    /* ปุ่มสลับภาษา: แสดงภาษาที่จะสลับไป */
+    Array.prototype.forEach.call(document.querySelectorAll('.lang-btn'), function (b) {
+      b.textContent = lang === 'th' ? 'EN' : 'ไทย';
+      b.setAttribute('lang', lang === 'th' ? 'en' : 'th');
+      b.setAttribute('aria-label', t('lang.switchTo'));
+      b.setAttribute('title', t('lang.switchTo'));
+    });
+  }
+
+  function setLang(l) {
+    if (l !== 'th' && l !== 'en') return;
+    lang = l;
+    try { localStorage.setItem(LS_KEY, JSON.stringify(l)); } catch (e) { /* ไม่เป็นไร */ }
+    applyStatic();
+  }
+
+  return {
+    t: t, srv: srv, setLang: setLang, applyStatic: applyStatic,
+    getLang: function () { return lang; },
+    checkTitle: checkTitle, checkHow: checkHow, typeName: typeName, failedItems: failedItems, locStr: locStr,
+    _dict: DICT, _server: SERVER_EN
+  };
+})();
+</script>

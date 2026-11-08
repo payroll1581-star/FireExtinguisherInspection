@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>สแกน QR ถังดับเพลิง</title>
+<style>
+  :root { --bg:#F5F5F7; --card:#fff; --text:#1B1B1F; --muted:#5E5E66; --brand:#C62828; --brand-ink:#fff; --line:#D9D9DE; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0F0F12; --card:#1B1B20; --text:#F1F1F4; --muted:#A8A8B2; --brand:#EF5350; --brand-ink:#1B1B1F; --line:#34343C; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:'Sarabun','Leelawadee UI',Tahoma,sans-serif; line-height:1.55; }
+  main { max-width:520px; margin:0 auto; padding:16px 16px calc(24px + env(safe-area-inset-bottom)); }
+  header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
+  h1 { font-size:1.25rem; margin:0; }
+  button, .btn { font:inherit; min-height:48px; padding:10px 18px; border-radius:12px; border:1px solid var(--line); background:var(--card); color:var(--text); cursor:pointer; }
+  .primary { background:var(--brand); border-color:var(--brand); color:var(--brand-ink); font-weight:700; width:100%; }
+  .lang { min-height:44px; padding:6px 14px; border-radius:999px; }
+  #reader { width:100%; min-height:280px; border-radius:16px; overflow:hidden; background:#0c0c0e; }
+  #reader video { object-fit:cover; }
+  p { margin:12px 0 4px; text-align:center; color:var(--muted); }
+  #msg { color:var(--text); }
+  #detail { font-size:.82rem; word-break:break-word; }
+  .stack { display:grid; gap:10px; margin-top:14px; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 id="title"></h1>
+    <button type="button" class="lang" id="lang"></button>
+  </header>
+  <div id="reader"></div>
+  <p id="msg" aria-live="polite"></p>
+  <p id="detail" hidden></p>
+  <div class="stack">
+    <button type="button" class="primary" id="retry" hidden></button>
+    <a class="btn" id="back" hidden style="text-align:center;text-decoration:none"></a>
+  </div>
+</main>
+
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* หน้านี้อยู่นอกกรอบ iframe ของ Google จึงเปิดกล้องสดได้ — สแกนแล้วส่งต่อไปที่ลิงก์ของระบบ */
+  var TXT = {
+    th: {
+      title: 'สแกน QR ถังดับเพลิง', langBtn: 'EN', opening: 'กำลังเปิดกล้อง...', aim: 'เล็งกล้องไปที่ QR Code บนถังดับเพลิง',
+      found: 'พบ QR แล้ว กำลังเปิดระบบ...', notOurs: 'QR นี้ไม่ใช่ของระบบตรวจถังดับเพลิง ลองใหม่อีกครั้ง',
+      denied: 'ยังไม่ได้รับอนุญาตให้ใช้กล้อง — แตะไอคอนแม่กุญแจที่แถบที่อยู่ เลือกอนุญาตกล้อง แล้วกดลองใหม่',
+      fail: 'เปิดกล้องไม่ได้ — ปิดแอปอื่นที่ใช้กล้อง แล้วกดลองใหม่ หรือเปิดลิงก์นี้ใน Chrome / Safari',
+      noCam: 'เบราว์เซอร์นี้เปิดกล้องไม่ได้ — เปิดลิงก์ใน Chrome / Safari', lib: 'โหลดตัวสแกนไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วโหลดหน้าใหม่',
+      retry: 'ลองเปิดกล้องอีกครั้ง', back: 'กลับไปที่ระบบ',
+    },
+    en: {
+      title: 'Scan fire extinguisher QR', langBtn: 'ไทย', opening: 'Opening the camera...', aim: 'Point the camera at the QR code on the extinguisher',
+      found: 'QR found, opening the system...', notOurs: 'This QR does not belong to the inspection system. Try again.',
+      denied: 'Camera access is not allowed — tap the padlock in the address bar, allow the camera, then tap Try again',
+      fail: 'Could not open the camera — close other apps using it and tap Try again, or open this link in Chrome / Safari',
+      noCam: 'This browser cannot open the camera — open the link in Chrome / Safari', lib: 'Could not load the scanner. Check your connection and reload.',
+      retry: 'Try the camera again', back: 'Back to the system',
+    },
+  };
+
+  var qs = new URLSearchParams(location.search);
+  var lang = qs.get('lang') === 'en' ? 'en' : 'th';
+  try { var saved = localStorage.getItem('fe_scan_lang'); if (!qs.get('lang') && (saved === 'en' || saved === 'th')) lang = saved; } catch (e) { /* ignore */ }
+
+  /* ลิงก์ Web App ที่ยอมรับ: https เท่านั้น และต้องเป็น script.google.com/.../macros/s/<id>/exec */
+  function appUrl(text) {
+    var u;
+    try { u = new URL(String(text || '').trim()); } catch (e) { return null; }
+    if (u.protocol !== 'https:' || u.hostname !== 'script.google.com') return null;
+    if (!/^\/(a\/macros\/[\w.-]+\/|macros\/)s\/[\w-]+\/(exec|dev)$/.test(u.pathname)) return null;
+    return u;
+  }
+
+  var appBase = null;
+  (function () {
+    var fromQuery = appUrl(qs.get('app'));
+    if (fromQuery) { appBase = fromQuery.origin + fromQuery.pathname; try { localStorage.setItem('fe_app', appBase); } catch (e) { /* ignore */ } return; }
+    try { var s = appUrl(localStorage.getItem('fe_app')); if (s) appBase = s.origin + s.pathname; } catch (e) { /* ignore */ }
+  })();
+
+  var ID_RE = /^[A-Z0-9][A-Z0-9_-]{0,39}$/;
+  /* คืนลิงก์ปลายทางถ้า QR ใช้ได้ (ลิงก์ของระบบ หรือรหัสถังเปล่า ๆ เมื่อรู้ลิงก์ระบบ) */
+  function targetFor(text) {
+    var u = appUrl(text);
+    if (u) {
+      var id = (u.searchParams.get('id') || '').trim().toUpperCase();
+      return u.origin + u.pathname + (ID_RE.test(id) ? '?id=' + encodeURIComponent(id) : '');
+    }
+    var bare = String(text || '').trim().toUpperCase();
+    if (appBase && ID_RE.test(bare)) return appBase + '?id=' + encodeURIComponent(bare);
+    return '';
+  }
+
+  function $(id) { return document.getElementById(id); }
+  function t(k) { return TXT[lang][k]; }
+  function paintStatic() {
+    document.documentElement.lang = lang;
+    document.title = t('title');
+    $('title').textContent = t('title');
+    $('lang').textContent = t('langBtn');
+    $('retry').textContent = t('retry');
+    $('back').textContent = t('back');
+    $('back').hidden = !appBase;
+    if (appBase) $('back').href = appBase;
+    if (msgKey) $('msg').textContent = t(msgKey);
+  }
+  var msgKey = '';
+  function say(k, detail) { msgKey = k; $('msg').textContent = t(k); $('detail').textContent = detail || ''; $('detail').hidden = !detail; }
+
+  var scanner = null, locked = false;
+  var CFG = { fps: 10, qrbox: function (w, h) { var s = Math.floor(Math.min(w, h) * 0.75); return { width: s, height: s }; } };
+
+  function onSuccess(text) {
+    if (locked) return;
+    var dest = targetFor(text);
+    if (!dest) { say('notOurs'); return; }
+    locked = true;
+    if (navigator.vibrate) navigator.vibrate(80);
+    say('found');
+    var go = function () { location.href = dest; };
+    if (scanner && scanner.isScanning) scanner.stop().then(go, go); else go();
+  }
+
+  function errText(e) { return String(e && (e.name ? e.name + (e.message ? ': ' + e.message : '') : e.message || e) || '').slice(0, 140); }
+
+  function start() {
+    locked = false;
+    $('retry').hidden = true;
+    if (typeof Html5Qrcode === 'undefined') { say('lib'); $('retry').hidden = false; return; }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { say('noCam'); return; }
+    say('opening');
+    var noop = function () { /* ยังไม่เจอ QR ในเฟรมนี้ */ };
+    var s = new Html5Qrcode('reader', { formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE], verbose: false });
+    scanner = s;
+    s.start({ facingMode: 'environment' }, CFG, onSuccess, noop).then(function () { say('aim'); }).catch(function (err) {
+      var msg = errText(err);
+      if (/Permission|NotAllowed|Security/i.test(msg)) throw err;
+      return Html5Qrcode.getCameras().then(function (cams) {
+        if (!cams || !cams.length) throw err;
+        var back = cams.filter(function (c) { return /back|rear|environment|หลัง/i.test(c.label || ''); })[0];
+        return s.start((back || cams[cams.length - 1]).id, CFG, onSuccess, noop).then(function () { say('aim'); });
+      });
+    }).catch(function (err) {
+      scanner = null;
+      say(/Permission|NotAllowed|Security/i.test(errText(err)) ? 'denied' : 'fail', errText(err));
+      $('retry').hidden = false;
+    });
+  }
+
+  $('retry').addEventListener('click', function () {
+    var p = scanner && scanner.isScanning ? scanner.stop() : Promise.resolve();
+    p.catch(function () {}).then(function () { try { if (scanner) scanner.clear(); } catch (e) { /* ignore */ } scanner = null; start(); });
+  });
+  $('lang').addEventListener('click', function () {
+    lang = lang === 'th' ? 'en' : 'th';
+    try { localStorage.setItem('fe_scan_lang', lang); } catch (e) { /* ignore */ }
+    paintStatic();
+  });
+
+  paintStatic();
+  start();
+})();
+</script>
+</body>
+</html>

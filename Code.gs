@@ -58,6 +58,7 @@ const CONFIG_DEFAULTS = [
   ['ALERT_EMAILS', '', 'อีเมลผู้รับแจ้งเตือนและรายงาน คั่นด้วยจุลภาค (,)'],
   ['DAILY_ALERT_HOUR', 8, 'ชั่วโมงที่ส่งอีเมลสรุปรายวัน (0–23) — แก้แล้วให้กดเมนู "ติดตั้งระบบ" อีกครั้ง'],
   ['WEBAPP_URL', '', 'URL ของ Web App ที่ลงท้ายด้วย /exec (ใช้สร้าง QR Code)'],
+  ['SCANNER_URL', '', 'URL หน้าสแกนกล้องสด (GitHub Pages, https เท่านั้น) — เว้นว่างเพื่อไม่แสดงปุ่ม'],
   ['PHOTO_FOLDER_ID', '', 'โฟลเดอร์ Google Drive เก็บรูปถังชำรุด (ระบบสร้างให้อัตโนมัติ)'],
   ['REPORT_FOLDER_ID', '', 'โฟลเดอร์ Google Drive เก็บรายงาน PDF (ระบบสร้างให้อัตโนมัติ)'],
 ];
@@ -78,8 +79,10 @@ function doGet(e) {
   const params = (e && e.parameter) || {};
   let appName = 'ระบบตรวจเช็คถังดับเพลิง';
   let baseUrl = '';
+  let scannerUrl = '';
   try {
     appName = getConfig_().orgName || appName;
+    scannerUrl = getConfig_().scannerUrl || '';
     baseUrl = getWebAppUrl_();
   } catch (err) {
     return HtmlService.createHtmlOutput(
@@ -93,6 +96,7 @@ function doGet(e) {
   t.initialId = sanitizeIdParam_(params.id);
   t.initialView = params.page === 'print' ? 'print' : '';
   t.baseUrl = baseUrl;
+  t.scannerUrl = scannerUrl;
   t.appName = appName;
   return t.evaluate()
     .setTitle('ตรวจถังดับเพลิง')
@@ -102,7 +106,7 @@ function doGet(e) {
 
 /** ใช้ใน template: <?!= include('Styles'); ?> (อ่านได้เฉพาะไฟล์ HTML ซึ่งเป็นข้อมูลสาธารณะอยู่แล้ว) */
 function include(name) {
-  const allowed = ['Styles', 'App', 'Print'];
+  const allowed = ['Styles', 'App', 'Print', 'I18n'];
   if (allowed.indexOf(name) === -1) return '';
   return HtmlService.createHtmlOutputFromFile(name).getContent();
 }
@@ -193,6 +197,7 @@ function getConfig_() {
     alertEmails: parseEmails_(map.ALERT_EMAILS),
     dailyAlertHour: isFinite(hour) && hour >= 0 && hour <= 23 ? Math.floor(hour) : 8,
     webAppUrl: /^https:\/\/script\.google\.com\//.test(str_(map.WEBAPP_URL)) ? str_(map.WEBAPP_URL) : '',
+    scannerUrl: /^https:\/\/[\w.-]+\.github\.io\/[^\s"'<>]*$/.test(str_(map.SCANNER_URL)) ? str_(map.SCANNER_URL) : '',
     photoFolderId: str_(map.PHOTO_FOLDER_ID),
     reportFolderId: str_(map.REPORT_FOLDER_ID),
   };
