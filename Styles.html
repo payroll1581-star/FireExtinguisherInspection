@@ -155,7 +155,7 @@
   .logo-mark .i { width: 38px; height: 38px; stroke-width: 1.8; }
   .login-hero h1 { font-size: 24px; font-weight: 600; }
   .login-hero p { margin: 4px 0 0; opacity: .88; font-size: 15px; }
-  .login-card { width: min(440px, calc(100% - 32px)); margin: -44px auto 0; background: var(--card); border-radius: 20px; padding: 22px 20px 20px; box-shadow: var(--shadow-2); border: 1px solid var(--line); }
+  .login-card { position: relative; z-index: 1; width: min(440px, calc(100% - 32px)); margin: -44px auto 0; background: var(--card); border-radius: 20px; padding: 22px 20px 20px; box-shadow: var(--shadow-2); border: 1px solid var(--line); }
   .login-card label.field:first-child { margin-top: 0; }
   .login-foot { text-align: center; padding: 18px 24px 28px; color: var(--muted); font-size: 13.5px; }
 
@@ -305,6 +305,103 @@
     .btn-big { min-height: 72px; }
     .login-hero { padding-top: 20px; padding-bottom: 56px; }
     html { scroll-padding-top: 16px; scroll-padding-bottom: 80px; }
+  }
+
+  /* ============ Responsive: small phones (≤380px) ============ */
+  @media (max-width: 380px) {
+    .wrap { padding: 12px; }
+    .topbar { gap: 8px; padding-left: 12px; padding-right: 12px; }
+    .brand { font-size: 15.5px; }
+    .user-chip { display: none !important; }
+    .lang-btn { min-width: 44px; padding: 0 10px; }
+    .tank-id { font-size: 1.6rem; }
+    .stat { padding: 9px 10px; }
+    .card-num { font-size: 24px; }
+    .stat .lbl { font-size: 12px; }
+    .btn-big { min-height: 88px; font-size: 18px; }
+    .pf button { font-size: 1rem; min-height: 52px; }
+    .list-item { padding: 11px 12px; gap: 10px; }
+    .list-item .side { max-width: 50%; }
+    .login-hero { padding-left: 16px; padding-right: 16px; }
+  }
+  @media (max-width: 340px) {
+    .filters { grid-template-columns: 1fr; }
+    .home-id-row { flex-direction: column; }
+    .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  /* ============ Responsive: tablet (≥768px) ============ */
+  .check-list > .check-item:first-child { margin-top: 0; }
+  @media (min-width: 768px) {
+    :root { --nav-h: 60px; --radius: 18px; }
+    .wrap { max-width: 760px; padding: 24px 28px; }
+    h2 { font-size: 1.4rem; }
+    .topbar { padding-left: 24px; padding-right: 24px; }
+    .brand { font-size: 18px; }
+    .user-chip { max-width: 40%; }
+    .banner { padding-left: 24px; padding-right: 24px; justify-content: center; }
+    .banner > div { flex: 0 1 704px; }
+
+    /* Home */
+    .btn-big { min-height: 120px; font-size: 22px; }
+    #home-admin { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    #home-admin > * + * { margin-top: 0; }
+    #home-admin h3 { grid-column: 1 / -1; margin-bottom: 0; }
+
+    /* Scan: keep the camera box a sensible size */
+    #view-scan #reader, #view-scan #reader-file, #view-scan .stack { max-width: 520px; margin-left: auto; margin-right: auto; }
+    #reader { min-height: 360px; }
+
+    /* Inspect: two-column checklist */
+    .check-list { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+    .check-list > .check-item { margin-top: 0; display: flex; flex-direction: column; }
+    .check-list .pf { margin-top: auto; }
+    .tank-id { font-size: 2.1rem; }
+    .sticky-submit { max-width: 480px; margin-left: auto; margin-right: auto; }
+    #insp-cancel { max-width: 480px; margin-left: auto; margin-right: auto; }
+    .photo-preview { max-height: 360px; }
+
+    /* Done */
+    #view-done .stack { max-width: 480px; margin-left: auto; margin-right: auto; }
+
+    /* Dashboard */
+    .stat-grid { grid-template-columns: repeat(6, 1fr); gap: 10px; }
+    .stat { padding: 12px 14px; }
+    #dash-list, #log-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; align-items: stretch; }
+    #dash-list > .list-item, #log-list > .hist { margin-top: 0; }
+    #dash-list > .empty, #log-list > .empty { grid-column: 1 / -1; }
+    .filters { grid-template-columns: repeat(2, minmax(0, 280px)); }
+    table.stats { font-size: 15px; }
+
+    /* Bottom nav: centred, icon beside label */
+    .bottomnav { justify-content: center; gap: 8px; }
+    .bottomnav button { flex: 0 1 170px; flex-direction: row; gap: 8px; font-size: 14.5px; }
+    .bottomnav button.active::before { width: 56px; }
+
+    /* Modal: centred dialog instead of bottom sheet */
+    .modal { align-items: center; padding: 24px; }
+    .modal-box { max-width: 640px; max-height: 84vh; max-height: 84dvh; border-radius: 22px; padding: 22px 24px 24px; }
+
+    /* Login */
+    .login-hero { padding-top: calc(72px + env(safe-area-inset-top)); padding-bottom: 96px; }
+    .login-hero h1 { font-size: 28px; }
+    .login-card { padding: 28px 28px 24px; }
+    .lang-btn-hero { right: 24px; }
+  }
+
+  /* ============ Responsive: large tablet / desktop (≥1100px) ============ */
+  @media (min-width: 1100px) {
+    #view-dashboard, #view-log { max-width: 1080px; }
+    #dash-list, #log-list { grid-template-columns: repeat(3, 1fr); }
+    #view-inspect, #view-home, #view-done, #view-scan { max-width: 860px; }
+  }
+  /* Phone held sideways is often ≥768px wide: keep the compact landscape sizing */
+  @media (max-height: 520px) and (orientation: landscape) {
+    :root { --nav-h: 52px; }
+    .btn-big { min-height: 72px; }
+    #reader { min-height: 240px; }
+    .login-hero { padding-top: 20px; padding-bottom: 56px; }
+    .modal-box { max-height: 92vh; max-height: 92dvh; }
   }
 
   /* ============ Motion ============ */

@@ -631,7 +631,7 @@
     if (it.status === 'DAMAGED' && it.last && it.last.failedItems) {
       h += '<div class="notice warn">' + ico('wrench') + '<div>' + esc(t('insp.prevFail', { items: I.failedItems(it.last.failedItems) })) + '</div></div>';
     }
-    h += '<h3>' + esc(t('insp.listTitle', { n: c.checklist.length })) + '</h3>';
+    h += '<h3>' + esc(t('insp.listTitle', { n: c.checklist.length })) + '</h3><div class="check-list">';
     c.checklist.forEach(function (q, i) {
       h += '<div class="check-item" data-q="' + esc(q.id) + '">' +
         '<div class="check-title">' + (i + 1) + '. ' + esc(I.checkTitle(q.title)) + '</div>' +
@@ -639,6 +639,7 @@
         '<div class="pf" role="group" aria-label="' + esc(I.checkTitle(q.title)) + '"><button type="button" data-ans="PASS" aria-pressed="false">' + ico('check') + esc(t('res.pass')) + '</button>' +
         '<button type="button" data-ans="FAIL" aria-pressed="false">' + ico('x') + esc(t('res.fail')) + '</button></div></div>';
     });
+    h += '</div>';
     if (it.status === 'DAMAGED') {
       h += '<div class="card" style="margin-top:12px"><label class="toggle"><input type="checkbox" id="insp-repaired"><span>' + esc(t('insp.repaired')) + '</span></label></div>';
     }
