@@ -535,7 +535,7 @@ window.I18n = (function () {
       });
     });
     /* ปุ่มสลับภาษา: แสดงภาษาที่จะสลับไป */
-    Array.prototype.forEach.call(document.querySelectorAll('.lang-btn'), function (b) {
+    Array.prototype.forEach.call(document.querySelectorAll('.lang-btn:not(.theme-btn)'), function (b) {
       b.textContent = lang === 'th' ? 'EN' : 'ไทย';
       b.setAttribute('lang', lang === 'th' ? 'en' : 'th');
       b.setAttribute('aria-label', t('lang.switchTo'));
