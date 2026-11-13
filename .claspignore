@@ -1,0 +1,9 @@
+# ไฟล์ที่ไม่ใช่ส่วนของ Apps Script — กัน `clasp push` ส่งขึ้นโปรเจกต์ (clasp จะส่ง .html ในโฟลเดอร์ย่อยด้วย)
+docs/**
+wayfinder/**
+README.md
+*.pdf
+.git/**
+.claude/**
+.gitignore
+.claspignore

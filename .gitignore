@@ -1,0 +1,8 @@
+# clasp: มี scriptId และ token ของเจ้าของ — ไม่ควรขึ้น GitHub
+.clasp.json
+.clasprc.json
+
+node_modules/
+*.log
+.DS_Store
+Thumbs.db

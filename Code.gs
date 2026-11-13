@@ -16,7 +16,9 @@ const APP = {
     USERS: 'Users',
     CONFIG: 'Config',
     CHECKLIST: 'Checklist',
+    ARCHIVE: 'InspectionsArchive', // ประวัติการตรวจเก่าที่ย้ายออกจาก Inspections (เมนู "ย้ายประวัติเก่า")
   },
+  ARCHIVE_KEEP_MONTHS: 12, // เก็บเดือนปัจจุบัน + ย้อนหลังกี่เดือนไว้ในชีต Inspections
   CACHE_DASH_KEY: 'dash_v1',
   CACHE_DASH_TTL: 30,
   CACHE_CFG_KEY: 'cfg_v1',
@@ -88,11 +90,16 @@ function doGet(e) {
     scannerUrl = getConfig_().scannerUrl || '';
     baseUrl = getWebAppUrl_();
   } catch (err) {
+    const notInstalled = !!(err && err.isAppError && err.code === 'SETUP');
+    if (!notInstalled) console.error('doGet failed: ' + (err && err.stack ? err.stack : err));
+    const body = notInstalled
+      ? '<h2>ยังไม่ได้ติดตั้งระบบ</h2><p>ผู้ดูแลต้องเปิด Google Sheet แล้วกดเมนู ' +
+        '<b>🧯 ระบบถังดับเพลิง → ⚙️ ติดตั้งระบบ</b> ก่อน</p>'
+      : '<h2>ระบบขัดข้องชั่วคราว</h2><p>ไม่สามารถอ่านข้อมูลระบบได้ในขณะนี้ กรุณารอสักครู่แล้วโหลดหน้านี้ใหม่ ' +
+        'หากยังไม่หาย ให้แจ้งผู้ดูแลระบบ (ดู Executions ใน Apps Script เพื่อหาสาเหตุ)</p>';
     return HtmlService.createHtmlOutput(
       '<meta name="viewport" content="width=device-width,initial-scale=1">' +
-      '<div style="font-family:sans-serif;padding:24px;line-height:1.6">' +
-      '<h2>ยังไม่ได้ติดตั้งระบบ</h2><p>ผู้ดูแลต้องเปิด Google Sheet แล้วกดเมนู ' +
-      '<b>🧯 ระบบถังดับเพลิง → ⚙️ ติดตั้งระบบ</b> ก่อน</p></div>')
+      '<div style="font-family:sans-serif;padding:24px;line-height:1.6">' + body + '</div>')
       .setTitle('ตรวจถังดับเพลิง');
   }
   const t = HtmlService.createTemplateFromFile('Index');

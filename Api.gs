@@ -243,9 +243,12 @@ function apiGetPhoto_(user, p) {
   const photoId = str_(p.photoId);
   if (!/^[A-Za-z0-9_-]{20,100}$/.test(photoId)) throw appError_('VALIDATION', 'รหัสรูปไม่ถูกต้อง');
   // อนุญาตเฉพาะไฟล์ที่ถูกอ้างอิงในชีต Inspections เท่านั้น (กันการอ่านไฟล์อื่นใน Drive ของเจ้าของ)
-  const sh = sheet_(APP.SHEETS.INSPECTIONS);
-  const last = sh.getLastRow();
-  const found = last >= 2 && sh.getRange(2, 13, last - 1, 1).createTextFinder(photoId).matchEntireCell(true).findNext();
+  // ค้นทั้งชีตหลักและชีตเก็บถาวร (ประวัติเก่าที่ย้ายออกไปแล้วยังเปิดดูรูปได้)
+  const found = [APP.SHEETS.INSPECTIONS, APP.SHEETS.ARCHIVE].some(function (name) {
+    const sh = getSS_().getSheetByName(name);
+    const last = sh ? sh.getLastRow() : 0;
+    return last >= 2 && !!sh.getRange(2, 13, last - 1, 1).createTextFinder(photoId).matchEntireCell(true).findNext();
+  });
   if (!found) throw appError_('NOT_FOUND', 'ไม่พบรูปนี้');
   const blob = DriveApp.getFileById(photoId).getBlob();
   return { dataUrl: 'data:' + blob.getContentType() + ';base64,' + Utilities.base64Encode(blob.getBytes()) };

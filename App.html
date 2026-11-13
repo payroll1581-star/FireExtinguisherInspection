@@ -1147,9 +1147,9 @@
       items.slice(p, p + 12).forEach(function (it) {
         var el = document.createElement('div');
         el.className = 'qr-label';
-        el.innerHTML = '<div class="ql-head">' + ico('ext') + ' ถังดับเพลิง</div><div class="ql-qr"></div>' +
+        el.innerHTML = '<div class="ql-head">' + ico('ext') + ' ' + esc(t('print.labelHead')) + '</div><div class="ql-qr"></div>' +
           '<div class="ql-id">' + esc(it.id) + '</div><div class="ql-loc">' + esc(locText(it)) + '</div>' +
-          '<div class="ql-hint">สแกนเพื่อตรวจ</div>';
+          '<div class="ql-hint">' + esc(t('print.labelHint')) + '</div>';
         new QRCode(el.querySelector('.ql-qr'), {
           text: (base || '') + '?id=' + encodeURIComponent(it.id),
           width: 256, height: 256, correctLevel: QRCode.CorrectLevel.M,

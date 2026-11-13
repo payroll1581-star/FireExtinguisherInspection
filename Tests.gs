@@ -139,6 +139,27 @@ function runAllTests_() {
     eq(INSPECTION_HEADERS.length, INS_COL.CLIENT_TIME);
     eq(INS_COL.ALERT, INS_COL.CLIENT_TIME - 1);
   });
+  test('api: คำสั่งที่ไม่รู้จัก/ชื่อใน prototype → NOT_FOUND', function () {
+    eq(api('nope', '', {}).code, 'NOT_FOUND');
+    eq(api('constructor', '', {}).code, 'NOT_FOUND');
+    eq(api('toString', '', {}).code, 'NOT_FOUND');
+  });
+  test('api: เรียกโดยไม่มี token/token ปลอม → AUTH', function () {
+    eq(api('getDashboard', '', {}).code, 'AUTH');
+    eq(api('getPhoto', 'garbage', { photoId: 'x' }).code, 'AUTH');
+  });
+  test('ย้ายประวัติเก่า: คงผลล่าสุดของแต่ละถังไว้เสมอ', function () {
+    const row = function (id, iso) { return ['u' + id + iso, new Date(iso), id]; };
+    const cutoff = new Date('2026-01-01T00:00:00Z');
+    const sp = splitForArchive_([
+      row('T1', '2024-05-01T00:00:00Z'),   // เก่า และมีผลใหม่กว่า → ย้าย
+      row('T1', '2025-02-01T00:00:00Z'),   // เก่า แต่เป็นผลล่าสุดของ T1 → คง
+      row('T2', '2026-03-01T00:00:00Z'),   // ใหม่ → คง
+      row('T3', '2023-01-01T00:00:00Z'),   // เก่าและเป็นผลเดียวของ T3 (ล่าสุด) → คง
+    ], cutoff);
+    eq(sp.archive.map(function (r) { return r[0]; }), ['uT12024-05-01T00:00:00Z']);
+    eq(sp.keep.length, 3);
+  });
   test('login: รหัสผู้ใช้ที่ไม่ถูกรูปแบบถูกปฏิเสธ', function () {
     let code = '';
     try { login_({ userId: 'x'.repeat(300), pin: '123456' }); } catch (e) { code = e.code; }

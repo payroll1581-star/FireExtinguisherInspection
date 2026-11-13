@@ -12,6 +12,7 @@ function onOpen() {
     .addItem('🖨️ เปิดหน้าพิมพ์ป้าย QR', 'menuOpenPrint')
     .addItem('📄 สร้างรายงานย้อนหลัง', 'menuReportForMonth')
     .addItem('🔔 ทดสอบส่งอีเมลสรุปรายวัน', 'menuTestDailyAlert')
+    .addItem('🗄️ ย้ายประวัติเก่าไปชีตเก็บถาวร', 'menuArchiveOld')
     .addSeparator()
     .addItem('🧪 ใส่ข้อมูลตัวอย่าง', 'menuSeedDemo')
     .addItem('🗑️ ล้างข้อมูลตัวอย่าง', 'menuClearDemo')
@@ -43,8 +44,7 @@ function setup() {
   // รูปแบบคอลัมน์: ข้อความล้วน (กันชีตแปลงค่าเอง เช่น "1/2" เป็นวันที่) และรูปแบบวันที่
   ['A', 'B', 'C', 'D', 'E', 'G'].forEach(function (c) { eq.getRange(c + '2:' + c).setNumberFormat('@'); });
   ['H', 'I', 'J'].forEach(function (c) { eq.getRange(c + '2:' + c).setNumberFormat('dd/mm/yyyy'); });
-  ['A', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'L', 'M', 'O', 'P'].forEach(function (c) { ins.getRange(c + '2:' + c).setNumberFormat('@'); });
-  ['B', 'N'].forEach(function (c) { ins.getRange(c + '2:' + c).setNumberFormat('dd/mm/yyyy hh:mm:ss'); });
+  applyInspectionFormats_(ins);
   ['A', 'B', 'C', 'D', 'E'].forEach(function (c) { users.getRange(c + '2:' + c).setNumberFormat('@'); });
   users.getRange('G2:G').setNumberFormat('dd/mm/yyyy hh:mm');
 
@@ -79,6 +79,12 @@ function setup() {
     ui.alert('ติดตั้งระบบเรียบร้อย', msg, ui.ButtonSet.OK);
   }
   return msg;
+}
+
+/** รูปแบบคอลัมน์ของชีตประวัติการตรวจ (ใช้ทั้ง Inspections และ InspectionsArchive) — คอลัมน์ข้อความเป็น "ข้อความล้วน" เพื่อกันสูตร */
+function applyInspectionFormats_(sh) {
+  ['A', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'L', 'M', 'O', 'P'].forEach(function (c) { sh.getRange(c + '2:' + c).setNumberFormat('@'); });
+  ['B', 'N'].forEach(function (c) { sh.getRange(c + '2:' + c).setNumberFormat('dd/mm/yyyy hh:mm:ss'); });
 }
 
 function ensureSheet_(ss, name, headers, widths) {
@@ -180,6 +186,87 @@ function menuOpenPrint() {
     '<p style="font-size:12px;color:#666;word-break:break-all">' + escapeHtml_(link) + '</p></div>')
     .setWidth(420).setHeight(200);
   ui.showModalDialog(html, 'พิมพ์ป้าย QR Code');
+}
+
+/* ============================== Archive ============================== */
+
+/**
+ * แยกแถวประวัติเป็น "คงไว้" กับ "ย้ายไปเก็บถาวร" (ฟังก์ชันล้วน ทดสอบได้)
+ * ย้ายเฉพาะแถวที่เก่ากว่า cutoff และไม่ใช่ผลตรวจล่าสุดของถังนั้น (สถานะชำรุดข้ามเดือนต้องใช้ผลล่าสุดเสมอ)
+ */
+function splitForArchive_(rows, cutoff) {
+  const timeOf = function (r) { const d = isDate_(r[1]) ? r[1] : new Date(r[1]); return d; };
+  const latest = {};
+  rows.forEach(function (r, i) {
+    const d = timeOf(r);
+    if (isNaN(d.getTime())) return;
+    const id = normalizeId_(r[2]);
+    if (!(id in latest) || d.getTime() >= timeOf(rows[latest[id]]).getTime()) latest[id] = i;
+  });
+  const keep = [];
+  const archive = [];
+  rows.forEach(function (r, i) {
+    const d = timeOf(r);
+    const old = !isNaN(d.getTime()) && d.getTime() < cutoff.getTime();
+    if (old && latest[normalizeId_(r[2])] !== i) archive.push(r); else keep.push(r);
+  });
+  return { keep: keep, archive: archive };
+}
+
+function archiveCutoff_(now) {
+  const p = ym_(now).split('-').map(Number);
+  let y = p[0];
+  let m = p[1] - APP.ARCHIVE_KEEP_MONTHS;
+  while (m < 1) { m += 12; y -= 1; }
+  return monthStart_(y, m);
+}
+
+function archiveOld_() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) throw appError_('BUSY', 'ระบบกำลังบันทึกข้อมูลของผู้อื่น กรุณาลองใหม่อีกครั้ง');
+  try {
+    const sh = sheet_(APP.SHEETS.INSPECTIONS);
+    const last = sh.getLastRow();
+    if (last < 2) return { archived: 0, kept: 0 };
+    const width = INSPECTION_HEADERS.length;
+    const rows = sh.getRange(2, 1, last - 1, width).getValues();
+    const sp = splitForArchive_(rows, archiveCutoff_(new Date()));
+    if (!sp.archive.length) return { archived: 0, kept: sp.keep.length };
+
+    const ss = getSS_();
+    let ar = ss.getSheetByName(APP.SHEETS.ARCHIVE);
+    if (!ar) {
+      ar = ss.insertSheet(APP.SHEETS.ARCHIVE);
+      ar.getRange(1, 1, 1, width).setValues([INSPECTION_HEADERS])
+        .setFontWeight('bold').setBackground('#757575').setFontColor('#ffffff');
+      ar.setFrozenRows(1);
+      applyInspectionFormats_(ar);
+      protectSheet_(ar, 'ประวัติการตรวจที่เก็บถาวร — ย้ายมาจากเมนูเท่านั้น');
+    }
+    // ลำดับสำคัญ: เขียนชีตเก็บถาวรให้เสร็จก่อน แล้วค่อยเขียนทับชีตหลัก (ถ้าขัดข้องกลางทางอย่างมากจะซ้ำ ไม่หาย)
+    ar.getRange(ar.getLastRow() + 1, 1, sp.archive.length, width).setValues(sp.archive);
+    SpreadsheetApp.flush();
+    sh.getRange(2, 1, sp.keep.length, width).setValues(sp.keep);
+    if (last - 1 > sp.keep.length) sh.getRange(sp.keep.length + 2, 1, last - 1 - sp.keep.length, width).clearContent();
+    SpreadsheetApp.flush();
+    invalidateDashboard_();
+    return { archived: sp.archive.length, kept: sp.keep.length };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function menuArchiveOld() {
+  requireOwner_();
+  const ui = SpreadsheetApp.getUi();
+  const ans = ui.alert('ย้ายประวัติเก่า',
+    'ย้ายประวัติการตรวจที่เก่ากว่า ' + APP.ARCHIVE_KEEP_MONTHS + ' เดือน ไปชีต "' + APP.SHEETS.ARCHIVE + '"\n\n' +
+    '• ผลตรวจล่าสุดของแต่ละถังจะอยู่ในชีตหลักเสมอ (สถานะ Dashboard ไม่เปลี่ยน)\n' +
+    '• รายงานย้อนหลังของเดือนที่เก่ากว่าช่วงนี้จะไม่นับข้อมูลที่ย้ายไปแล้ว\n' +
+    '• แนะนำให้ทำสำเนาไฟล์ Google Sheet ก่อน\n\nดำเนินการต่อ?', ui.ButtonSet.YES_NO);
+  if (ans !== ui.Button.YES) return;
+  const r = archiveOld_();
+  ui.alert(r.archived ? 'ย้ายแล้ว ' + r.archived + ' แถว (คงไว้ในชีตหลัก ' + r.kept + ' แถว)' : 'ไม่มีประวัติที่ต้องย้าย');
 }
 
 /* ============================== Demo data ============================== */
