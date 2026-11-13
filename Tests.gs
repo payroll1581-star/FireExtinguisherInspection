@@ -160,6 +160,33 @@ function runAllTests_() {
     eq(sp.archive.map(function (r) { return r[0]; }), ['uT12024-05-01T00:00:00Z']);
     eq(sp.keep.length, 3);
   });
+  test('สำรองข้อมูล: parseBackupName_', function () {
+    eq(parseBackupName_('Backup_2026-11-13_0200'), { ymd: '2026-11-13', hm: '0200' });
+    eq(parseBackupName_('Backup_2026-11-13'), null);
+    eq(parseBackupName_('สำเนาของฉัน'), null);
+  });
+  test('สำรองข้อมูล: เก็บรายวัน 30 วัน + สิ้นเดือน และไม่แตะชื่อที่ไม่รู้จัก', function () {
+    const names = ['สำเนาของฉัน'];
+    for (let i = 0; i < 55; i++) {
+      const d = new Date(Date.UTC(2026, 8, 20 + i)); // 20 ก.ย. → 13 พ.ย. 2026
+      names.push('Backup_' + d.toISOString().slice(0, 10) + '_0200');
+    }
+    names.push('Backup_2026-11-13_0900'); // ซ้ำวันเดียวกัน: ตัวเก่ากว่า (0200) ต้องถูกลบ
+    const del = planBackupRetention_(names);
+    ok(del.indexOf('Backup_2026-11-13_0200') !== -1, 'ตัวเก่าของวันเดียวกันต้องถูกลบ');
+    ok(del.indexOf('Backup_2026-11-13_0900') === -1, 'ตัวล่าสุดต้องคงไว้');
+    ok(del.indexOf('Backup_2026-09-30_0200') === -1, 'สิ้นเดือน ก.ย. ต้องคงไว้');
+    ok(del.indexOf('Backup_2026-09-25_0200') !== -1, 'รายวันที่เก่ากว่า 30 วันและไม่ใช่สิ้นเดือนต้องถูกลบ');
+    ok(del.indexOf('Backup_2026-10-20_0200') === -1, 'ภายใน 30 วันต้องคงไว้');
+    ok(del.indexOf('สำเนาของฉัน') === -1, 'ชื่อที่ไม่รู้จักต้องไม่ถูกลบ');
+  });
+  test('สำรองข้อมูล: parseRestoreSheets_', function () {
+    const av = restorableSheets_();
+    eq(parseRestoreSheets_('ALL', av).length, av.length);
+    eq(parseRestoreSheets_('inspections, users', av).map(function (a) { return a.name; }), ['Inspections', 'Users']);
+    eq(parseRestoreSheets_('Inspections, Nope', av), null);
+    eq(parseRestoreSheets_('', av), null);
+  });
   test('login: รหัสผู้ใช้ที่ไม่ถูกรูปแบบถูกปฏิเสธ', function () {
     let code = '';
     try { login_({ userId: 'x'.repeat(300), pin: '123456' }); } catch (e) { code = e.code; }

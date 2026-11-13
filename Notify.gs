@@ -155,7 +155,8 @@ function dailyAlert(e) {
   const damaged = data.items.filter(function (it) { return it.status === STATUS.DAMAGED; });
   const expired = data.items.filter(function (it) { return it.expiry === EXPIRY.EXPIRED; });
   const soon = data.items.filter(function (it) { return it.expiry === EXPIRY.SOON; });
-  if (!damaged.length && !expired.length && !soon.length) {
+  const backupWarn = backupWarningHtml_();
+  if (!damaged.length && !expired.length && !soon.length && !backupWarn) {
     console.log('dailyAlert: ไม่มีรายการที่ต้องแจ้งเตือน');
     return 'ไม่มีรายการที่ต้องแจ้งเตือนวันนี้ (ไม่ได้ส่งอีเมล)';
   }
@@ -181,7 +182,8 @@ function dailyAlert(e) {
         (it.last ? '<br><span style="color:#777">ตรวจเมื่อ ' + escapeHtml_(fmtThaiDate_(it.last.time.slice(0, 10))) + ' โดย ' + escapeHtml_(it.last.by) + '</span>' : '');
     }) +
     section('⛔ หมดอายุ / เลยกำหนด', '#8E0000', expired, expiryText_) +
-    section('🟠 ใกล้หมดอายุ (≤ ' + data.warnDays + ' วัน)', '#EF6C00', soon, expiryText_);
+    section('🟠 ใกล้หมดอายุ (≤ ' + data.warnDays + ' วัน)', '#EF6C00', soon, expiryText_) +
+    backupWarn;
 
   const subject = '[สรุปประจำวัน] ถังดับเพลิง: ชำรุด ' + damaged.length + ' · หมดอายุ ' + expired.length + ' · ใกล้หมดอายุ ' + soon.length;
   const sent = sendMail_(subject, emailShell_('สรุปสถานะถังดับเพลิงประจำวัน', '#C62828', inner));

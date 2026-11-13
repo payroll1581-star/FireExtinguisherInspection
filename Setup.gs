@@ -14,6 +14,9 @@ function onOpen() {
     .addItem('🔔 ทดสอบส่งอีเมลสรุปรายวัน', 'menuTestDailyAlert')
     .addItem('🗄️ ย้ายประวัติเก่าไปชีตเก็บถาวร', 'menuArchiveOld')
     .addSeparator()
+    .addItem('💾 สำรองข้อมูลตอนนี้', 'menuBackupNow')
+    .addItem('♻️ กู้คืนจากสำรอง', 'menuRestore')
+    .addSeparator()
     .addItem('🧪 ใส่ข้อมูลตัวอย่าง', 'menuSeedDemo')
     .addItem('🗑️ ล้างข้อมูลตัวอย่าง', 'menuClearDemo')
     .addItem('✅ ทดสอบระบบ (runTests)', 'runTests')
@@ -56,6 +59,7 @@ function setup() {
   protectSheet_(users, 'ข้อมูลผู้ใช้และ PIN hash — จัดการผ่านเมนูเท่านั้น');
   if (!users.isSheetHidden()) users.hideSheet();
   setupTriggers_();
+  markBackupStart_();
 
   // ลบชีตว่างเริ่มต้น (Sheet1 / แผ่น1)
   ss.getSheets().forEach(function (sh) {
@@ -66,9 +70,14 @@ function setup() {
   const cache = CacheService.getScriptCache();
   cache.removeAll([APP.CACHE_CFG_KEY, APP.CACHE_USERS_KEY, APP.CACHE_DASH_KEY]);
 
+  // สำรองครั้งแรกทันที (ล้มเหลวไม่ทำให้การติดตั้งล้ม — ระบบแจ้งอีเมลและเตือนในสรุปรายวันอยู่แล้ว)
+  let backupNote = '';
+  try { backupNote = 'สำรองข้อมูลครั้งแรกแล้ว: ' + createBackup_().name + '\n\n'; }
+  catch (err) { backupNote = '⚠️ สำรองข้อมูลครั้งแรกไม่สำเร็จ: ' + (err && err.message ? err.message : err) + '\n\n'; }
+
   const ui = getUiOrNull_();
   const noMail = getConfig_().alertEmails.length ? '' : '⚠️ ยังไม่ได้ตั้ง ALERT_EMAILS — เมื่อพบถังชำรุดจะยังไม่มีใครได้รับอีเมล (ระบบจะเก็บไว้และส่งให้ทีหลังเมื่อตั้งค่าแล้ว)\n\n';
-  const msg = noMail + 'ติดตั้งระบบเรียบร้อย\n\nขั้นตอนต่อไป:\n1) ใส่อีเมลผู้รับแจ้งเตือนใน Config → ALERT_EMAILS\n' +
+  const msg = noMail + backupNote + 'ติดตั้งระบบเรียบร้อย\n\nขั้นตอนต่อไป:\n1) ใส่อีเมลผู้รับแจ้งเตือนใน Config → ALERT_EMAILS\n' +
     '2) เมนู "เพิ่มผู้ใช้" อย่างน้อย 1 คนที่เป็น Admin\n3) Deploy เป็น Web App แล้ววาง URL (/exec) ใน Config → WEBAPP_URL\n4) ใส่ข้อมูลถังในชีต Equipment';
   if (!ui) { console.log(msg); return msg; }
   const hasDemo = readRows_(APP.SHEETS.EQUIPMENT, 1).some(function (r) { return str_(r[0]).toUpperCase().indexOf(APP.DEMO_PREFIX) === 0; });
@@ -132,6 +141,7 @@ function ensureFolders_(ss) {
   }
   if (!valid(cfg.photoFolderId)) setConfigValue_('PHOTO_FOLDER_ID', getParent().createFolder('รูปถังชำรุด').getId());
   if (!valid(cfg.reportFolderId)) setConfigValue_('REPORT_FOLDER_ID', getParent().createFolder('รายงานประจำเดือน').getId());
+  if (!valid(cfg.backupFolderId)) setConfigValue_('BACKUP_FOLDER_ID', getParent().createFolder('สำรองข้อมูล').getId());
 }
 
 function applyValidations_(eq, users, cl) {
@@ -163,13 +173,14 @@ function protectSheet_(sh, description) {
 }
 
 function setupTriggers_() {
-  const handlers = ['dailyAlert', 'monthlyReport', 'retryPendingAlerts'];
+  const handlers = ['dailyAlert', 'monthlyReport', 'retryPendingAlerts', 'dailyBackup'];
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (handlers.indexOf(t.getHandlerFunction()) !== -1) ScriptApp.deleteTrigger(t);
   });
   const hour = getConfig_().dailyAlertHour;
   ScriptApp.newTrigger('dailyAlert').timeBased().atHour(hour).everyDays(1).inTimezone(APP.TZ).create();
   ScriptApp.newTrigger('retryPendingAlerts').timeBased().everyHours(1).create();
+  ScriptApp.newTrigger('dailyBackup').timeBased().atHour(2).everyDays(1).inTimezone(APP.TZ).create();
   ScriptApp.newTrigger('monthlyReport').timeBased().onMonthDay(1).atHour(7).inTimezone(APP.TZ).create();
 }
 
@@ -265,6 +276,7 @@ function menuArchiveOld() {
     '• รายงานย้อนหลังของเดือนที่เก่ากว่าช่วงนี้จะไม่นับข้อมูลที่ย้ายไปแล้ว\n' +
     '• แนะนำให้ทำสำเนาไฟล์ Google Sheet ก่อน\n\nดำเนินการต่อ?', ui.ButtonSet.YES_NO);
   if (ans !== ui.Button.YES) return;
+  if (!backupBeforeRisk_(ui)) return;
   const r = archiveOld_();
   ui.alert(r.archived ? 'ย้ายแล้ว ' + r.archived + ' แถว (คงไว้ในชีตหลัก ' + r.kept + ' แถว)' : 'ไม่มีประวัติที่ต้องย้าย');
 }
@@ -281,6 +293,7 @@ function menuClearDemo() {
   const ui = SpreadsheetApp.getUi();
   const ans = ui.alert('ล้างข้อมูลตัวอย่าง', 'ลบถัง ผู้ใช้ และประวัติการตรวจที่ขึ้นต้นด้วย "' + APP.DEMO_PREFIX + '" ทั้งหมด?', ui.ButtonSet.YES_NO);
   if (ans !== ui.Button.YES) return;
+  if (!backupBeforeRisk_(ui)) return;
   const n = clearDemo_();
   ui.alert('ลบข้อมูลตัวอย่างแล้ว: ถัง ' + n.equipment + ' · ประวัติ ' + n.inspections + ' · ผู้ใช้ ' + n.users);
 }

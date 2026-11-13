@@ -66,6 +66,7 @@ const CONFIG_DEFAULTS = [
   ['SCANNER_URL', '', 'URL หน้าสแกนกล้องสด (GitHub Pages, https เท่านั้น) — เว้นว่างเพื่อไม่แสดงปุ่ม'],
   ['PHOTO_FOLDER_ID', '', 'โฟลเดอร์ Google Drive เก็บรูปถังชำรุด (ระบบสร้างให้อัตโนมัติ)'],
   ['REPORT_FOLDER_ID', '', 'โฟลเดอร์ Google Drive เก็บรายงาน PDF (ระบบสร้างให้อัตโนมัติ)'],
+  ['BACKUP_FOLDER_ID', '', 'โฟลเดอร์ Google Drive เก็บไฟล์สำรองข้อมูล (ระบบสร้างให้อัตโนมัติ — ห้ามแชร์แบบลิงก์ เพราะมีชื่อผู้ใช้และข้อมูลการตรวจ)'],
 ];
 
 const CHECKLIST_DEFAULTS = [
@@ -211,6 +212,7 @@ function getConfig_() {
     scannerUrl: /^https:\/\/[\w.-]+\.github\.io\/[^\s"'<>]*$/.test(str_(map.SCANNER_URL)) ? str_(map.SCANNER_URL) : '',
     photoFolderId: str_(map.PHOTO_FOLDER_ID),
     reportFolderId: str_(map.REPORT_FOLDER_ID),
+    backupFolderId: str_(map.BACKUP_FOLDER_ID),
   };
   cache.put(APP.CACHE_CFG_KEY, JSON.stringify(cfg), 60);
   return cfg;
