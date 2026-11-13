@@ -19,8 +19,9 @@
   button, .btn { font:inherit; min-height:48px; padding:10px 18px; border-radius:12px; border:1px solid var(--line); background:var(--card); color:var(--text); cursor:pointer; }
   .primary { background:var(--brand); border-color:var(--brand); color:var(--brand-ink); font-weight:700; width:100%; }
   .lang { min-height:44px; padding:6px 14px; border-radius:999px; }
-  #reader { width:100%; min-height:280px; border-radius:16px; overflow:hidden; background:#0c0c0e; }
-  #reader video { object-fit:cover; }
+  #reader { position:relative; width:100%; aspect-ratio:3/4; max-height:70vh; border-radius:16px; overflow:hidden; background:#0c0c0e; }
+  #video { width:100%; height:100%; object-fit:cover; display:block; }
+  #frame { position:absolute; inset:12%; border:3px solid rgba(255,255,255,.85); border-radius:18px; box-shadow:0 0 0 999px rgba(0,0,0,.25); pointer-events:none; }
   p { margin:12px 0 4px; text-align:center; color:var(--muted); }
   #msg { color:var(--text); }
   #detail { font-size:.82rem; word-break:break-word; }
@@ -34,37 +35,47 @@
     <h1 id="title"></h1>
     <button type="button" class="lang" id="lang"></button>
   </header>
-  <div id="reader"></div>
+  <div id="reader">
+    <video id="video" muted playsinline autoplay></video>
+    <div id="frame" hidden></div>
+  </div>
+  <canvas id="canvas" hidden></canvas>
   <p id="msg" aria-live="polite"></p>
   <p id="detail" hidden></p>
   <div class="stack">
-    <button type="button" class="primary" id="retry" hidden></button>
+    <button type="button" class="primary" id="start" hidden></button>
     <a class="btn" id="back" hidden style="text-align:center;text-decoration:none"></a>
   </div>
 </main>
 
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script>
 (function () {
   'use strict';
 
-  /* หน้านี้อยู่นอกกรอบ iframe ของ Google จึงเปิดกล้องสดได้ — สแกนแล้วส่งต่อไปที่ลิงก์ของระบบ */
+  /* หน้านี้อยู่นอกกรอบ iframe ของ Google จึงเปิดกล้องสดได้ — สแกนแล้วส่งต่อไปที่ลิงก์ของระบบ
+     เปิดกล้องเองด้วย getUserMedia (มีตัวจับเวลา ไม่ค้าง) และถอดรหัสด้วย BarcodeDetector ของเบราว์เซอร์ ถ้าไม่มีจึงโหลด jsQR */
   var TXT = {
     th: {
       title: 'สแกน QR ถังดับเพลิง', langBtn: 'EN', opening: 'กำลังเปิดกล้อง...', aim: 'เล็งกล้องไปที่ QR Code บนถังดับเพลิง',
+      tap: 'แตะปุ่มด้านล่างเพื่อเปิดกล้อง (ถ้ามีหน้าต่างถาม ให้กด "อนุญาต")', startBtn: 'เปิดกล้อง', retry: 'ลองเปิดกล้องอีกครั้ง',
       found: 'พบ QR แล้ว กำลังเปิดระบบ...', notOurs: 'QR นี้ไม่ใช่ของระบบตรวจถังดับเพลิง ลองใหม่อีกครั้ง',
-      denied: 'ยังไม่ได้รับอนุญาตให้ใช้กล้อง — แตะไอคอนแม่กุญแจที่แถบที่อยู่ เลือกอนุญาตกล้อง แล้วกดลองใหม่',
-      fail: 'เปิดกล้องไม่ได้ — ปิดแอปอื่นที่ใช้กล้อง แล้วกดลองใหม่ หรือเปิดลิงก์นี้ใน Chrome / Safari',
-      noCam: 'เบราว์เซอร์นี้เปิดกล้องไม่ได้ — เปิดลิงก์ใน Chrome / Safari', lib: 'โหลดตัวสแกนไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วโหลดหน้าใหม่',
-      retry: 'ลองเปิดกล้องอีกครั้ง', back: 'กลับไปที่ระบบ',
+      stuck: 'กล้องยังไม่ขึ้น — ถ้ามีหน้าต่างถามสิทธิ์ ให้กด "อนุญาต" ถ้าไม่มี ให้แตะไอคอนด้านซ้ายของแถบที่อยู่ → สิทธิ์ → กล้อง → อนุญาต แล้วกดลองใหม่',
+      denied: 'ยังไม่ได้รับอนุญาตให้ใช้กล้อง — แตะไอคอนด้านซ้ายของแถบที่อยู่ → สิทธิ์ (Permissions) → กล้อง → อนุญาต แล้วกดลองใหม่',
+      busy: 'กล้องถูกแอปอื่นใช้อยู่ — ปิดแอปกล้อง / วิดีโอคอล / แท็บอื่นที่ใช้กล้อง แล้วกดลองใหม่',
+      fail: 'เปิดกล้องไม่ได้ — กดลองใหม่ หรือสแกน QR ด้วยแอปกล้องของมือถือ',
+      noCam: 'เบราว์เซอร์นี้เปิดกล้องไม่ได้ — เปิดลิงก์ใน Chrome / Safari', lib: 'โหลดตัวอ่าน QR ไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วโหลดหน้าใหม่',
+      back: 'กลับไปที่ระบบ',
     },
     en: {
       title: 'Scan fire extinguisher QR', langBtn: 'ไทย', opening: 'Opening the camera...', aim: 'Point the camera at the QR code on the extinguisher',
+      tap: 'Tap the button below to open the camera (allow it if asked)', startBtn: 'Open camera', retry: 'Try the camera again',
       found: 'QR found, opening the system...', notOurs: 'This QR does not belong to the inspection system. Try again.',
-      denied: 'Camera access is not allowed — tap the padlock in the address bar, allow the camera, then tap Try again',
-      fail: 'Could not open the camera — close other apps using it and tap Try again, or open this link in Chrome / Safari',
-      noCam: 'This browser cannot open the camera — open the link in Chrome / Safari', lib: 'Could not load the scanner. Check your connection and reload.',
-      retry: 'Try the camera again', back: 'Back to the system',
+      stuck: 'The camera has not started — if a permission prompt is shown, tap Allow; otherwise tap the icon left of the address bar → Permissions → Camera → Allow, then try again',
+      denied: 'Camera access is not allowed — tap the icon left of the address bar → Permissions → Camera → Allow, then try again',
+      busy: 'Another app is using the camera — close the camera / video-call app or other tabs, then try again',
+      fail: 'Could not open the camera — try again, or scan the QR with your phone\'s camera app',
+      noCam: 'This browser cannot open the camera — open the link in Chrome / Safari', lib: 'Could not load the QR reader. Check your connection and reload.',
+      back: 'Back to the system',
     },
   };
 
@@ -103,22 +114,83 @@
 
   function $(id) { return document.getElementById(id); }
   function t(k) { return TXT[lang][k]; }
+  var msgKey = '', btnKey = 'startBtn';
   function paintStatic() {
     document.documentElement.lang = lang;
     document.title = t('title');
     $('title').textContent = t('title');
     $('lang').textContent = t('langBtn');
-    $('retry').textContent = t('retry');
+    $('start').textContent = t(btnKey);
     $('back').textContent = t('back');
     $('back').hidden = !appBase;
     if (appBase) $('back').href = appBase;
     if (msgKey) $('msg').textContent = t(msgKey);
   }
-  var msgKey = '';
   function say(k, detail) { msgKey = k; $('msg').textContent = t(k); $('detail').textContent = detail || ''; $('detail').hidden = !detail; }
+  function showButton(key) { btnKey = key; $('start').textContent = t(key); $('start').hidden = false; }
+  function errText(e) { return String(e && (e.name ? e.name + (e.message ? ': ' + e.message : '') : e.message || e) || '').slice(0, 140); }
 
-  var scanner = null, locked = false;
-  var CFG = { fps: 10, qrbox: function (w, h) { var s = Math.floor(Math.min(w, h) * 0.75); return { width: s, height: s }; } };
+  var video = $('video'), canvas = $('canvas');
+  var stream = null, running = false, locked = false, attempt = 0, watch = null, decoder = null;
+
+  function stopCamera() {
+    running = false;
+    clearTimeout(watch);
+    if (stream) { stream.getTracks().forEach(function (tr) { try { tr.stop(); } catch (e) { /* ignore */ } }); }
+    stream = null;
+    try { video.srcObject = null; } catch (e) { /* ignore */ }
+    $('frame').hidden = true;
+  }
+
+  /* ตัวถอดรหัส: BarcodeDetector (Chrome Android มีในตัว เร็ว) → ถ้าไม่มี โหลด jsQR */
+  function getDecoder() {
+    if (decoder) return Promise.resolve(decoder);
+    var native = Promise.resolve(false);
+    if ('BarcodeDetector' in window) {
+      native = Promise.resolve(window.BarcodeDetector.getSupportedFormats ? window.BarcodeDetector.getSupportedFormats() : ['qr_code'])
+        .then(function (f) { return f.indexOf('qr_code') !== -1; }, function () { return false; });
+    }
+    return native.then(function (ok) {
+      if (ok) {
+        var bd = new window.BarcodeDetector({ formats: ['qr_code'] });
+        decoder = function () { return bd.detect(video).then(function (r) { return r && r[0] ? r[0].rawValue : ''; }); };
+        return decoder;
+      }
+      return loadJsQR().then(function () {
+        var ctx = canvas.getContext('2d', { willReadFrequently: true });
+        decoder = function () {
+          var w = video.videoWidth, h = video.videoHeight;
+          if (!w || !h) return Promise.resolve('');
+          var s = Math.min(1, 720 / Math.max(w, h));
+          canvas.width = Math.round(w * s); canvas.height = Math.round(h * s);
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          var img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          var r = window.jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+          return Promise.resolve(r ? r.data : '');
+        };
+        return decoder;
+      });
+    });
+  }
+  function loadJsQR() {
+    if (window.jsQR) return Promise.resolve();
+    return new Promise(function (resolve, reject) {
+      var sc = document.createElement('script');
+      sc.src = 'https://unpkg.com/jsqr@1.4.0/dist/jsQR.js';
+      sc.onload = function () { window.jsQR ? resolve() : reject(new Error('jsQR missing')); };
+      sc.onerror = function () { reject(new Error('jsQR load failed')); };
+      document.head.appendChild(sc);
+    });
+  }
+
+  function scanLoop(my) {
+    if (my !== attempt || !running || locked) return;
+    decoder().then(function (text) {
+      if (text) onSuccess(text);
+    }, function () { /* เฟรมนี้อ่านไม่ได้ ข้ามไป */ }).then(function () {
+      if (my === attempt && running && !locked) setTimeout(function () { scanLoop(my); }, 120);
+    });
+  }
 
   function onSuccess(text) {
     if (locked) return;
@@ -127,48 +199,87 @@
     locked = true;
     if (navigator.vibrate) navigator.vibrate(80);
     say('found');
-    var go = function () { location.href = dest; };
-    if (scanner && scanner.isScanning) scanner.stop().then(go, go); else go();
+    stopCamera();
+    location.href = dest;
   }
 
-  function errText(e) { return String(e && (e.name ? e.name + (e.message ? ': ' + e.message : '') : e.message || e) || '').slice(0, 140); }
-
-  function start() {
-    locked = false;
-    $('retry').hidden = true;
-    if (typeof Html5Qrcode === 'undefined') { say('lib'); $('retry').hidden = false; return; }
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { say('noCam'); return; }
-    say('opening');
-    var noop = function () { /* ยังไม่เจอ QR ในเฟรมนี้ */ };
-    var s = new Html5Qrcode('reader', { formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE], verbose: false });
-    scanner = s;
-    s.start({ facingMode: 'environment' }, CFG, onSuccess, noop).then(function () { say('aim'); }).catch(function (err) {
-      var msg = errText(err);
-      if (/Permission|NotAllowed|Security/i.test(msg)) throw err;
-      return Html5Qrcode.getCameras().then(function (cams) {
-        if (!cams || !cams.length) throw err;
-        var back = cams.filter(function (c) { return /back|rear|environment|หลัง/i.test(c.label || ''); })[0];
-        return s.start((back || cams[cams.length - 1]).id, CFG, onSuccess, noop).then(function () { say('aim'); });
-      });
-    }).catch(function (err) {
-      scanner = null;
-      say(/Permission|NotAllowed|Security/i.test(errText(err)) ? 'denied' : 'fail', errText(err));
-      $('retry').hidden = false;
+  function openStream() {
+    var md = navigator.mediaDevices;
+    var ideal = { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false };
+    return md.getUserMedia(ideal).catch(function (err) {
+      // บางเครื่องไม่รับข้อกำหนดกล้องหลัง/ความละเอียด → ลองแบบเปิดกล้องอะไรก็ได้
+      if (/NotAllowed|Security|Permission/i.test(errText(err))) throw err;
+      return md.getUserMedia({ video: true, audio: false });
     });
   }
 
-  $('retry').addEventListener('click', function () {
-    var p = scanner && scanner.isScanning ? scanner.stop() : Promise.resolve();
-    p.catch(function () {}).then(function () { try { if (scanner) scanner.clear(); } catch (e) { /* ignore */ } scanner = null; start(); });
-  });
+  function start() {
+    locked = false;
+    $('start').hidden = true;
+    stopCamera();
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { say('noCam', window.isSecureContext ? '' : 'not a secure context'); return; }
+    var my = ++attempt;
+    say('opening');
+    // 10 วินาทีแล้วภาพยังไม่ขึ้น → บอกวิธีแก้และให้ลองใหม่ (ไม่ค้างที่ "กำลังเปิดกล้อง" อีก)
+    watch = setTimeout(function () {
+      if (my !== attempt || locked) return;
+      if (!video.videoWidth) { say('stuck', 'no video after 10s'); showButton('retry'); }
+    }, 10000);
+    openStream().then(function (s) {
+      if (my !== attempt) { s.getTracks().forEach(function (tr) { tr.stop(); }); return; }
+      stream = s;
+      video.srcObject = s;
+      video.muted = true;
+      video.setAttribute('playsinline', '');
+      var p = video.play();
+      return (p && p.then ? p : Promise.resolve()).then(function () {
+        return new Promise(function (resolve) {
+          if (video.videoWidth) return resolve();
+          video.addEventListener('loadedmetadata', function once() { video.removeEventListener('loadedmetadata', once); resolve(); });
+        });
+      }).then(function () { return getDecoder(); }).then(function () {
+        if (my !== attempt) return;
+        clearTimeout(watch);
+        running = true;
+        $('frame').hidden = false;
+        say('aim');
+        scanLoop(my);
+      }, function (err) {
+        if (my !== attempt) return;
+        stopCamera();
+        say('lib', errText(err));
+        showButton('retry');
+      });
+    }, function (err) {
+      if (my !== attempt) return;
+      stopCamera();
+      var m = errText(err);
+      say(/NotAllowed|Security|Permission/i.test(m) ? 'denied' : /NotReadable|TrackStart|Abort/i.test(m) ? 'busy' : 'fail', m);
+      showButton('retry');
+    });
+  }
+
+  $('start').addEventListener('click', start);
   $('lang').addEventListener('click', function () {
     lang = lang === 'th' ? 'en' : 'th';
     try { localStorage.setItem('fe_scan_lang', lang); } catch (e) { /* ignore */ }
     paintStatic();
   });
+  // ออกจากหน้า/สลับแอป → ปิดกล้อง กลับมา → เปิดใหม่ (กันกล้องค้างหรือจอดำ)
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) { if (running) { stopCamera(); running = 'paused'; } }
+    else if (running === 'paused' && !locked) start();
+  });
+  window.addEventListener('pagehide', stopCamera);
 
   paintStatic();
-  start();
+  // ได้สิทธิ์กล้องแล้ว → เปิดอัตโนมัติ / ยังไม่ได้ → ให้แตะปุ่ม (เบราว์เซอร์แสดงหน้าต่างขอสิทธิ์ได้แน่นอนเมื่อผู้ใช้แตะ)
+  var q = null;
+  try { q = navigator.permissions && navigator.permissions.query ? navigator.permissions.query({ name: 'camera' }) : null; } catch (e) { q = null; }
+  Promise.resolve(q).then(function (p) {
+    if (p && p.state === 'granted') start();
+    else { say(p && p.state === 'denied' ? 'denied' : 'tap'); showButton('startBtn'); }
+  }, function () { say('tap'); showButton('startBtn'); });
 })();
 </script>
 </body>

@@ -413,6 +413,10 @@
       return { key: p.state === 'denied' ? 'scan.permDenied' : 'scan.blockedCtx', info: base + ',perm=' + p.state };
     }, function () { return { key: 'scan.blockedCtx', info: base + ',perm=n/a' }; });
   }
+  function cameraPolicyBlocked() {
+    var pp = document.permissionsPolicy || document.featurePolicy;
+    try { return !!pp && typeof pp.allowsFeature === 'function' && !pp.allowsFeature('camera'); } catch (e) { return false; }
+  }
   /* เมื่อกล้องสดใช้ไม่ได้ ให้ปุ่มถ่ายรูปเป็นทางหลัก */
   function setPhotoPrimary(on) {
     var b = $('scan-photo-btn');
@@ -447,6 +451,15 @@
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setScanMsg('scan.noCam');
       setScanProblem('mediaDevices unavailable (' + (window.isSecureContext ? 'secure' : 'not secure') + ' context)');
+      return;
+    }
+    // กรอบ iframe ของ Google ไม่เปิดสิทธิ์กล้อง → ลองเปิดไปก็ไม่มีวันได้ ข้ามไปแสดงปุ่มตัวสแกนกล้องสด (นอกกรอบ) เป็นทางหลักทันที
+    if (cameraPolicyBlocked() && D.scannerUrl) {
+      stopScanner();
+      setScanMsg('scan.useLive');
+      showLiveLink();
+      $('scan-live').hidden = false;
+      setPhotoPrimary(true);
       return;
     }
     setScanMsg('scan.opening');
