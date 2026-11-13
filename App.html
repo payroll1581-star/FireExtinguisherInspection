@@ -16,7 +16,7 @@
   var t = I.t;
   var LS = {
     TOKEN: 'fe_token', EXP: 'fe_exp', USER: 'fe_user', LAST_USER: 'fe_last_user',
-    CACHE: 'fe_cache', QUEUE: 'fe_queue', FAILED: 'fe_failed',
+    CACHE: 'fe_cache', QUEUE: 'fe_queue', FAILED: 'fe_failed', THEME: 'fe_theme',
   };
   var ID_RE = /^[A-Z0-9][A-Z0-9_-]{0,39}$/;
   var STATUS_ICON = { NORMAL: 'check', DAMAGED: 'alert', PENDING: 'clock', all: 'ext' };
@@ -1196,6 +1196,7 @@
 
   function setLang(l) {
     I.setLang(l);
+    updateThemeButtons();
     updateChrome();
     var v = state.view;
     if (v === 'login') { $('login-msg').textContent = ''; $('login-pin').removeAttribute('aria-invalid'); }
@@ -1210,6 +1211,29 @@
   }
 
   function toggleLang() { setLang(I.getLang() === 'th' ? 'en' : 'th'); }
+
+  /* ============================== Theme (สว่าง/มืด) ============================== */
+
+  function currentTheme() {
+    var th = document.documentElement.getAttribute('data-theme');
+    if (th === 'dark' || th === 'light') return th;
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  function updateThemeButtons() {
+    var dark = currentTheme() === 'dark';
+    var label = t(dark ? 'theme.toLight' : 'theme.toDark');
+    Array.prototype.forEach.call(document.querySelectorAll('[data-theme-toggle]'), function (b) {
+      b.setAttribute('aria-label', label);
+      b.setAttribute('title', label);
+      b.setAttribute('aria-pressed', String(dark));
+    });
+  }
+  function toggleTheme() {
+    var next = currentTheme() === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    lsSet(LS.THEME, next);
+    updateThemeButtons();
+  }
 
   /* ============================== Init ============================== */
 
@@ -1265,6 +1289,7 @@
       b.addEventListener('click', function () { onNav(b.getAttribute('data-nav')); });
     });
     Array.prototype.forEach.call(document.querySelectorAll('[data-lang-toggle]'), function (b) { b.addEventListener('click', toggleLang); });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-theme-toggle]'), function (b) { b.addEventListener('click', toggleTheme); });
     window.addEventListener('online', updateNet);
     window.addEventListener('offline', updateNet);
     document.addEventListener('visibilitychange', function () {
@@ -1279,6 +1304,7 @@
   function init() {
     I.applyStatic();
     bind();
+    updateThemeButtons();
     detectInApp();
     updateNet();
     var token = lsGet(LS.TOKEN, null);

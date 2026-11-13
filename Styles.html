@@ -31,8 +31,10 @@
     --nav-h: 64px;
     --ease: cubic-bezier(.2,.7,.2,1);
   }
+  /* ธีมมืด: ตามค่าของเครื่องเมื่อผู้ใช้ยังไม่เลือก (ไม่มี data-theme) และบังคับได้ด้วยปุ่มสลับธีม (data-theme=dark/light)
+     ชุดสีมืดต้องเหมือนกันทั้งสองบล็อก — แก้ที่หนึ่งต้องแก้อีกที่ด้วย */
   @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme=light]) {
       --red: #D93636;
       --red-press: #BE2B2B;
       --red-ink: #FF8A84;
@@ -56,6 +58,32 @@
       --shadow-1: 0 0 0 1px rgba(255,255,255,.04);
       --shadow-2: 0 8px 24px rgba(0,0,0,.5);
     }
+  }
+  :root[data-theme=light] { color-scheme: light; }
+  :root[data-theme=dark] {
+    color-scheme: dark;
+    --red: #D93636;
+    --red-press: #BE2B2B;
+    --red-ink: #FF8A84;
+    --red-soft: #3B1719;
+    --green: #6FD28C;
+    --green-soft: #13301D;
+    --orange: #FFB566;
+    --orange-soft: #3A2610;
+    --blue-soft: #10283F;
+    --blue-ink: #8CC4FF;
+    --violet-soft: #2A2046;
+    --violet-ink: #C3B1FF;
+    --gray-soft: #2A2A2F;
+    --bg: #0F0F12;
+    --card: #1B1B1F;
+    --text: #F1F1F4;
+    --muted: #A6A8B0;
+    --line: #2E2E34;
+    --topbar: #8F1D1D;
+    --field: #232328;
+    --shadow-1: 0 0 0 1px rgba(255,255,255,.04);
+    --shadow-2: 0 8px 24px rgba(0,0,0,.5);
   }
 
   /* ============ Base ============ */
@@ -103,6 +131,13 @@
   }
   .lang-btn:active { transform: scale(.95); background: rgba(255,255,255,.28); }
   .lang-btn-hero { position: absolute; top: calc(10px + env(safe-area-inset-top)); right: 14px; }
+  /* ปุ่มสลับธีมสว่าง/มืด: แสดงไอคอนดวงจันทร์เมื่ออยู่ธีมสว่าง (กดเพื่อไปมืด) และดวงอาทิตย์เมื่ออยู่ธีมมืด */
+  .theme-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; padding: 0 10px; }
+  .theme-btn .i { width: 20px; height: 20px; }
+  .theme-btn .i-sun { display: none; }
+  :root[data-theme=dark] .theme-btn .i-sun { display: inline-block; }
+  :root[data-theme=dark] .theme-btn .i-moon { display: none; }
+  .theme-btn-hero { position: absolute; top: calc(10px + env(safe-area-inset-top)); right: 70px; }
   .net-dot { width: 10px; height: 10px; border-radius: 50%; background: #8DF0A5; flex: none; box-shadow: 0 0 0 3px rgba(141,240,165,.25); }
   .net-dot.off { background: #FFB74D; box-shadow: 0 0 0 3px rgba(255,183,77,.3); }
 
@@ -197,7 +232,8 @@
   .pf button .i { width: 22px; height: 22px; }
   .pf button.sel-pass { background: var(--green); border-color: var(--green); color: #fff; }
   .pf button.sel-fail { background: var(--red); border-color: var(--red); color: #fff; }
-  @media (prefers-color-scheme: dark) { .pf button.sel-pass { color: #07230F; } }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme=light]) .pf button.sel-pass { color: #07230F; } }
+  :root[data-theme=dark] .pf button.sel-pass { color: #07230F; }
   .toggle { display: flex; align-items: center; gap: 12px; min-height: var(--tap); font-weight: 500; cursor: pointer; }
   .toggle input { width: 26px; height: 26px; accent-color: var(--green); flex: none; }
   .photo-preview { width: 100%; max-height: 260px; object-fit: contain; border-radius: var(--radius-sm); background: #000; margin-top: 10px; }
@@ -387,6 +423,7 @@
     .login-hero h1 { font-size: 28px; }
     .login-card { padding: 28px 28px 24px; }
     .lang-btn-hero { right: 24px; }
+    .theme-btn-hero { right: 80px; }
   }
 
   /* ============ Responsive: large tablet / desktop (≥1100px) ============ */

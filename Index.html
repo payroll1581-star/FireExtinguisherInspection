@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
   <?!= include('Styles'); ?>
+  <script>try { var th = JSON.parse(localStorage.getItem('fe_theme')); if (th === 'dark' || th === 'light') document.documentElement.setAttribute('data-theme', th); } catch (e) { /* ใช้ตามค่าของเครื่อง */ }</script>
   <?!= include('Print'); ?>
 </head>
 <body data-view="login" data-initial-id="<?= initialId ?>" data-initial-view="<?= initialView ?>" data-base-url="<?= baseUrl ?>" data-scanner-url="<?= scannerUrl ?>" data-app-name="<?= appName ?>">
@@ -37,13 +38,16 @@
       <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.09-3.09a2 2 0 0 0-2.82 0L6 21"/></symbol>
       <symbol id="i-close" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
       <symbol id="i-save" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></symbol>
-      <symbol id="i-note" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+      <symbol id="i-note"viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></symbol>
     </defs>
   </svg>
 
   <header class="topbar no-print">
     <div class="brand"><svg class="i" aria-hidden="true"><use href="#i-ext"/></svg><span id="brand-name" data-i18n="brand.default">ตรวจถังดับเพลิง</span></div>
     <div class="user-chip" id="user-chip" hidden></div>
+    <button type="button" class="lang-btn theme-btn" data-theme-toggle><svg class="i i-moon" aria-hidden="true"><use href="#i-moon"/></svg><svg class="i i-sun" aria-hidden="true"><use href="#i-sun"/></svg></button>
     <button type="button" class="lang-btn" data-lang-toggle>EN</button>
     <span class="net-dot" id="net-dot" data-i18n-attr="title:net.title" title="สถานะเครือข่าย"></span>
   </header>
@@ -61,6 +65,7 @@
     <!-- ============ Login ============ -->
     <section class="view login" id="view-login" hidden>
       <div class="login-hero">
+        <button type="button" class="lang-btn theme-btn theme-btn-hero" data-theme-toggle><svg class="i i-moon" aria-hidden="true"><use href="#i-moon"/></svg><svg class="i i-sun" aria-hidden="true"><use href="#i-sun"/></svg></button>
         <button type="button" class="lang-btn lang-btn-hero" data-lang-toggle>EN</button>
         <div class="logo-mark"><svg class="i" aria-hidden="true"><use href="#i-ext"/></svg></div>
         <h1><?= appName ?></h1>
