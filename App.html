@@ -583,11 +583,13 @@
     });
   }
 
+  var PHOTO_MAX_CHARS = 1200000;
   function compressPhoto(file) {
     return imageToCanvas(file, 1280).then(function (c) {
+      // เป้า ≤ ~1.2 ล้านตัวอักษร เพื่อให้คิวออฟไลน์ใน localStorage (โควตาราว 5 ล้านตัวอักษร) เก็บได้หลายรายการ
       var q = 0.72;
       var url = c.toDataURL('image/jpeg', q);
-      while (url.length > 3500000 && q > 0.3) { q -= 0.15; url = c.toDataURL('image/jpeg', q); }
+      while (url.length > PHOTO_MAX_CHARS && q > 0.3) { q -= 0.1; url = c.toDataURL('image/jpeg', q); }
       return url;
     });
   }
@@ -756,7 +758,7 @@
     btn.textContent = t('insp.saving');
     call('submitInspection', payload).then(function (res) {
       applyLocalResult(c.item.id, payload, res.status);
-      renderDone(c.item, res.status, false);
+      renderDone(c.item, res.status, false, res.alert);
     }).catch(function (err) {
       if (err.code === 'NETWORK' || err.code === 'AUTH' || err.code === 'BUSY') {
         if (!enqueue(payload)) {
@@ -785,9 +787,9 @@
     lsSet(LS.CACHE, state.cache);
   }
 
-  function renderDone(item, status, queued) {
+  function renderDone(item, status, queued, alertState) {
     state.current = null;
-    state.doneArgs = [item, status, queued];
+    state.doneArgs = [item, status, queued, alertState];
     paintDone();
     show('done');
     renderQueueBanner();
@@ -796,15 +798,16 @@
   function paintDone() {
     var a = state.doneArgs;
     if (!a) return;
-    var item = a[0], status = a[1], queued = a[2];
+    var item = a[0], status = a[1], queued = a[2], alertState = a[3];
     var ok = status !== 'DAMAGED';
-    $('view-done').innerHTML =
+    // ถ้าอีเมลยังไม่ได้ส่ง ต้องบอกผู้ตรวจตรง ๆ ให้แจ้งผู้รับผิดชอบเอง ไม่ใช่บอกว่าส่งแล้ว
+    var alertNote = alertState === 'PENDING' ? 'done.alertPending' : (alertState === 'NO_RECIPIENTS' ? 'done.alertNone' : 'done.emailed');    $('view-done').innerHTML =
       '<div class="done-icon ' + (queued ? 'q' : (ok ? 'ok' : 'bad')) + '">' + ico(queued ? 'upload' : (ok ? 'check' : 'alert')) + '</div>' +
       '<h2 class="center">' + esc(queued ? t('done.queued') : t('done.saved')) + '</h2>' +
       '<p class="center"><b>' + esc(item.id) + '</b><br><span class="muted">' + esc(locText(item)) + '</span></p>' +
       '<p class="center">' + statusChip(status) + '</p>' +
       (queued ? '<div class="notice info">' + esc(t('done.queuedNote')) + '</div>' : '') +
-      (!ok && !queued ? '<div class="notice warn">' + esc(t('done.emailed')) + '</div>' : '') +
+      (!ok && !queued ? '<div class="notice warn">' + esc(t(alertNote)) + '</div>' : '') +
       '<div class="stack" style="margin-top:18px">' +
       '<button class="btn btn-primary btn-big" type="button" id="done-next">' + ico('scan') + esc(t('done.next')) + '</button>' +
       '<button class="btn btn-outline" type="button" id="done-home">' + esc(t('done.home')) + '</button></div>';
@@ -822,6 +825,15 @@
 
   function queueFor(userId) {
     return lsGet(LS.QUEUE, []).filter(function (x) { return x.userId === userId; });
+  }
+
+  var MAX_QUEUE_TRIES = 5;
+  function bumpTries(id) {
+    var n = 0;
+    var q = lsGet(LS.QUEUE, []);
+    q.forEach(function (x) { if (x.payload.uuid === id) { x.tries = (x.tries || 0) + 1; n = x.tries; } });
+    lsSet(LS.QUEUE, q);
+    return n;
   }
 
   function removeFromQueue(id) {
@@ -843,8 +855,10 @@
         sent++;
         return next();
       }).catch(function (err) {
-        if (err.code === 'NETWORK' || err.code === 'AUTH' || err.code === 'BUSY' || err.code === 'ERROR') return; // ลองใหม่รอบหน้า
-        // ข้อมูลไม่ผ่านการตรวจสอบของ server → ย้ายไปรายการที่ส่งไม่สำเร็จ
+        if (err.code === 'NETWORK' || err.code === 'AUTH' || err.code === 'BUSY') return; // ลองใหม่รอบหน้า
+        // ข้อผิดพลาดภายใน server (ERROR) ลองซ้ำได้จำกัด ไม่งั้นรายการที่ติดปัญหาถาวรจะยิง server ทุก 30 วินาทีตลอดไป
+        if (err.code === 'ERROR' && bumpTries(entry.payload.uuid) < MAX_QUEUE_TRIES) return;
+        // ข้อมูลไม่ผ่านการตรวจสอบของ server หรือลองครบจำนวนแล้ว → ย้ายไปรายการที่ส่งไม่สำเร็จ
         removeFromQueue(entry.payload.uuid);
         var failed = lsGet(LS.FAILED, []);
         failed.push({ equipmentId: entry.payload.equipmentId, time: entry.payload.clientTime, error: err.raw || err.message });

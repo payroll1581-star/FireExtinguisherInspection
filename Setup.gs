@@ -35,7 +35,7 @@ function setup() {
   ensureSecrets_();
 
   const eq = ensureSheet_(ss, APP.SHEETS.EQUIPMENT, EQUIPMENT_HEADERS, [110, 120, 70, 200, 130, 90, 110, 110, 150, 170, 90]);
-  const ins = ensureSheet_(ss, APP.SHEETS.INSPECTIONS, INSPECTION_HEADERS, [250, 150, 100, 90, 150, 90, 90, 220, 220, 220, 110, 200, 120, 150]);
+  const ins = ensureSheet_(ss, APP.SHEETS.INSPECTIONS, INSPECTION_HEADERS, [250, 150, 100, 90, 150, 90, 90, 220, 220, 220, 110, 200, 120, 150, 130, 200]);
   const users = ensureSheet_(ss, APP.SHEETS.USERS, USER_HEADERS, [90, 180, 100, 120, 200, 90, 150]);
   const cfg = ensureSheet_(ss, APP.SHEETS.CONFIG, CONFIG_HEADERS, [180, 320, 460]);
   const cl = ensureSheet_(ss, APP.SHEETS.CHECKLIST, CHECKLIST_HEADERS, [80, 180, 320, 260, 90]);
@@ -43,7 +43,7 @@ function setup() {
   // รูปแบบคอลัมน์: ข้อความล้วน (กันชีตแปลงค่าเอง เช่น "1/2" เป็นวันที่) และรูปแบบวันที่
   ['A', 'B', 'C', 'D', 'E', 'G'].forEach(function (c) { eq.getRange(c + '2:' + c).setNumberFormat('@'); });
   ['H', 'I', 'J'].forEach(function (c) { eq.getRange(c + '2:' + c).setNumberFormat('dd/mm/yyyy'); });
-  ['A', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'L', 'M'].forEach(function (c) { ins.getRange(c + '2:' + c).setNumberFormat('@'); });
+  ['A', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'L', 'M', 'O', 'P'].forEach(function (c) { ins.getRange(c + '2:' + c).setNumberFormat('@'); });
   ['B', 'N'].forEach(function (c) { ins.getRange(c + '2:' + c).setNumberFormat('dd/mm/yyyy hh:mm:ss'); });
   ['A', 'B', 'C', 'D', 'E'].forEach(function (c) { users.getRange(c + '2:' + c).setNumberFormat('@'); });
   users.getRange('G2:G').setNumberFormat('dd/mm/yyyy hh:mm');
@@ -67,7 +67,8 @@ function setup() {
   cache.removeAll([APP.CACHE_CFG_KEY, APP.CACHE_USERS_KEY, APP.CACHE_DASH_KEY]);
 
   const ui = getUiOrNull_();
-  const msg = 'ติดตั้งระบบเรียบร้อย\n\nขั้นตอนต่อไป:\n1) ใส่อีเมลผู้รับแจ้งเตือนใน Config → ALERT_EMAILS\n' +
+  const noMail = getConfig_().alertEmails.length ? '' : '⚠️ ยังไม่ได้ตั้ง ALERT_EMAILS — เมื่อพบถังชำรุดจะยังไม่มีใครได้รับอีเมล (ระบบจะเก็บไว้และส่งให้ทีหลังเมื่อตั้งค่าแล้ว)\n\n';
+  const msg = noMail + 'ติดตั้งระบบเรียบร้อย\n\nขั้นตอนต่อไป:\n1) ใส่อีเมลผู้รับแจ้งเตือนใน Config → ALERT_EMAILS\n' +
     '2) เมนู "เพิ่มผู้ใช้" อย่างน้อย 1 คนที่เป็น Admin\n3) Deploy เป็น Web App แล้ววาง URL (/exec) ใน Config → WEBAPP_URL\n4) ใส่ข้อมูลถังในชีต Equipment';
   if (!ui) { console.log(msg); return msg; }
   const hasDemo = readRows_(APP.SHEETS.EQUIPMENT, 1).some(function (r) { return str_(r[0]).toUpperCase().indexOf(APP.DEMO_PREFIX) === 0; });
@@ -83,8 +84,11 @@ function setup() {
 function ensureSheet_(ss, name, headers, widths) {
   let sh = ss.getSheetByName(name);
   if (!sh) sh = ss.insertSheet(name);
+  // เติมเฉพาะหัวคอลัมน์ที่ว่าง (ชีตเก่าที่อัปเดตเวอร์ชันจะได้คอลัมน์ใหม่ โดยไม่ทับหัวเดิม)
   const current = sh.getRange(1, 1, 1, headers.length).getValues()[0];
-  if (current.join('') === '') sh.getRange(1, 1, 1, headers.length).setValues([headers]);
+  if (current.some(function (v, i) { return v === '' && headers[i]; })) {
+    sh.getRange(1, 1, 1, headers.length).setValues([current.map(function (v, i) { return v === '' ? headers[i] : v; })]);
+  }
   sh.getRange(1, 1, 1, headers.length)
     .setFontWeight('bold').setBackground('#C62828').setFontColor('#ffffff').setVerticalAlignment('middle');
   sh.setFrozenRows(1);
@@ -153,12 +157,13 @@ function protectSheet_(sh, description) {
 }
 
 function setupTriggers_() {
-  const handlers = ['dailyAlert', 'monthlyReport'];
+  const handlers = ['dailyAlert', 'monthlyReport', 'retryPendingAlerts'];
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (handlers.indexOf(t.getHandlerFunction()) !== -1) ScriptApp.deleteTrigger(t);
   });
   const hour = getConfig_().dailyAlertHour;
   ScriptApp.newTrigger('dailyAlert').timeBased().atHour(hour).everyDays(1).inTimezone(APP.TZ).create();
+  ScriptApp.newTrigger('retryPendingAlerts').timeBased().everyHours(1).create();
   ScriptApp.newTrigger('monthlyReport').timeBased().onMonthDay(1).atHour(7).inTimezone(APP.TZ).create();
 }
 
@@ -255,7 +260,7 @@ function seedDemo_(ui) {
     });
     return [Utilities.getUuid(), pl[1], pl[0], P + 'INSP', 'ผู้ตรวจ (ตัวอย่าง)', METHOD.QR,
       failed.length ? RESULT.FAIL : RESULT.PASS, failed.join(', '), JSON.stringify(results),
-      failed.length ? 'ข้อมูลตัวอย่าง: สายฉีดกรอบ ตัวถังมีสนิม' : '', false, '', '', pl[1]];
+      failed.length ? 'ข้อมูลตัวอย่าง: สายฉีดกรอบ ตัวถังมีสนิม' : '', false, '', '', pl[1], failed.length ? ALERT.SENT : '', ''];
   });
   const insSh = sheet_(APP.SHEETS.INSPECTIONS);
   insSh.getRange(insSh.getLastRow() + 1, 1, rows.length, INSPECTION_HEADERS.length).setValues(rows);

@@ -135,6 +135,10 @@ function runAllTests_() {
     const us = sheet_(APP.SHEETS.USERS);
     eq(us.getRange('B2').getNumberFormat(), '@', 'รูปแบบเซลล์ Users!B2');
   });
+  test('คอลัมน์ Inspections: เลขคอลัมน์สถานะแจ้งเตือน/เวลาเครื่องตรงกับหัวตาราง', function () {
+    eq(INSPECTION_HEADERS.length, INS_COL.CLIENT_TIME);
+    eq(INS_COL.ALERT, INS_COL.CLIENT_TIME - 1);
+  });
   test('login: รหัสผู้ใช้ที่ไม่ถูกรูปแบบถูกปฏิเสธ', function () {
     let code = '';
     try { login_({ userId: 'x'.repeat(300), pin: '123456' }); } catch (e) { code = e.code; }

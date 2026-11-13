@@ -58,9 +58,70 @@ function notifyDamaged_(r) {
     return '<tr><td style="padding:6px 8px;border-bottom:1px solid #eee;color:#555;width:130px">' + escapeHtml_(x[0]) +
       '</td><td style="padding:6px 8px;border-bottom:1px solid #eee"><b>' + escapeHtml_(x[1]) + '</b></td></tr>';
   }).join('') + '</table>' + (r.photoBlob ? '<p style="font-size:13px;color:#555">📎 แนบรูปจุดชำรุดมากับอีเมลนี้</p>' : '');
-  sendMail_('[แจ้งเตือน] พบถังดับเพลิงชำรุด ' + eq.id + ' — ' + locationText_(eq),
+  return sendMail_((r.retry ? '[ส่งซ้ำ] ' : '') + '[แจ้งเตือน] พบถังดับเพลิงชำรุด ' + eq.id + ' — ' + locationText_(eq),
     emailShell_('⚠️ พบถังดับเพลิงชำรุด', '#C62828', table),
     r.photoBlob ? [r.photoBlob] : null);
+}
+
+/**
+ * ส่งอีเมลชำรุดทันทีหลังบันทึก คืนสถานะ: 'SENT' | 'PENDING' (ส่งไม่ได้ ระบบจะลองใหม่) | 'NO_RECIPIENTS' (ยังไม่ตั้ง ALERT_EMAILS)
+ * ผลตรวจถูกบันทึกแล้วเสมอ — ความล้มเหลวของอีเมลไม่ทำให้การบันทึกล้ม
+ */
+function sendDamagedAlert_(uuid, r) {
+  try {
+    if (notifyDamaged_(r)) {
+      markAlertSent_(uuid);
+      return ALERT.SENT;
+    }
+    return getConfig_().alertEmails.length ? ALERT.PENDING : 'NO_RECIPIENTS';
+  } catch (e) {
+    console.error('notifyDamaged_ failed: ' + e);
+    return ALERT.PENDING;
+  }
+}
+
+function markAlertSent_(uuid) {
+  const sh = sheet_(APP.SHEETS.INSPECTIONS);
+  const row = findInspectionRow_(sh, uuid);
+  if (row) sh.getRange(row, INS_COL.ALERT).setValue(ALERT.SENT);
+}
+
+/** Trigger ทุกชั่วโมง: ส่งอีเมลชำรุดที่ค้างอยู่ (ส่งไม่สำเร็จ หรือยังไม่มีผู้รับตอนนั้น) ครั้งละไม่เกิน 20 รายการ */
+function retryPendingAlerts(e) {
+  requireOwnerOrTrigger_(e);
+  if (!getConfig_().alertEmails.length) return 'ยังไม่ได้ตั้ง ALERT_EMAILS';
+  const sh = sheet_(APP.SHEETS.INSPECTIONS);
+  const last = sh.getLastRow();
+  if (last < 2) return 'ไม่มีรายการค้าง';
+  const flags = sh.getRange(2, INS_COL.ALERT, last - 1, 1).getValues();
+  const eqMap = {};
+  loadEquipment_(true).forEach(function (x) { eqMap[x.id] = x; });
+  let tried = 0;
+  let sent = 0;
+  for (let i = 0; i < flags.length && tried < 20; i++) {
+    if (str_(flags[i][0]) !== ALERT.PENDING) continue;
+    tried++;
+    const row = sh.getRange(i + 2, 1, 1, INSPECTION_HEADERS.length).getValues()[0];
+    const eq = eqMap[normalizeId_(row[2])];
+    if (!eq) { console.warn('retryPendingAlerts: ไม่พบถัง ' + row[2]); continue; }
+    let blob = null;
+    const photoId = str_(row[12]);
+    if (photoId) { try { blob = DriveApp.getFileById(photoId).getBlob(); } catch (err) { console.warn('อ่านรูปไม่ได้: ' + err); } }
+    try {
+      const ok = notifyDamaged_({
+        equipment: eq, inspector: str_(row[4]), time: isDate_(row[1]) ? row[1] : new Date(row[1]),
+        failed: str_(row[7]).split(', ').filter(String), remarks: str_(row[9]),
+        method: str_(row[5]) === METHOD.MANUAL ? METHOD.MANUAL : METHOD.QR, photoBlob: blob, retry: true,
+      });
+      if (!ok) break; // โควตาหมดหรือไม่มีผู้รับ — รอรอบหน้า
+      sh.getRange(i + 2, INS_COL.ALERT).setValue(ALERT.SENT);
+      sent++;
+    } catch (err) {
+      console.error('retryPendingAlerts failed: ' + err);
+      break;
+    }
+  }
+  return 'ส่งซ้ำสำเร็จ ' + sent + ' จาก ' + tried + ' รายการ';
 }
 
 /** แจ้ง Admin เมื่อบัญชีถูกล็อกเพราะใส่ PIN ผิด (จำกัด 1 ฉบับ/ชั่วโมง กันโควตาอีเมลหมดจากการถูกโจมตีซ้ำ) */

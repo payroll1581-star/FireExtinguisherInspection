@@ -94,6 +94,8 @@ function apiSubmitInspection_(user, p) {
   const repaired = p.repaired === true;
   const now = new Date();
   const inspectedAt = clampClientTime_(p.clientTime, now);
+  // ถ้าเวลาจากเครื่องถูกปรับเป็นเวลา server ให้เก็บค่าดิบไว้ตรวจสอบย้อนหลัง
+  const rawClientTime = inspectedAt === now ? cleanText_(p.clientTime, 40) : '';
 
   let photoBlob = null;
   if (isFail) {
@@ -118,31 +120,35 @@ function apiSubmitInspection_(user, p) {
       if (photoFile) photoFile.setTrashed(true);
       return { saved: true, duplicate: true, status: isFail ? STATUS.DAMAGED : STATUS.NORMAL };
     }
-    sh.appendRow([
-      uuid, inspectedAt, id, user.id, user.name, method,
-      isFail ? RESULT.FAIL : RESULT.PASS,
-      failed.join(', '), JSON.stringify(results), remarks, repaired,
-      photoFile ? photoFile.getUrl() : '', photoFile ? photoFile.getId() : '', now,
-    ]);
-    SpreadsheetApp.flush();
+    try {
+      sh.appendRow([
+        uuid, inspectedAt, id, user.id, user.name, method,
+        isFail ? RESULT.FAIL : RESULT.PASS,
+        failed.join(', '), JSON.stringify(results), remarks, repaired,
+        photoFile ? photoFile.getUrl() : '', photoFile ? photoFile.getId() : '', now,
+        isFail ? ALERT.PENDING : '', rawClientTime,
+      ]);
+      SpreadsheetApp.flush();
+    } catch (err) {
+      // บันทึกไม่สำเร็จ → ไม่ทิ้งรูปค้างใน Drive (client จะส่งใหม่ด้วย uuid เดิม)
+      if (photoFile) { try { photoFile.setTrashed(true); } catch (e2) { /* ignore */ } }
+      throw err;
+    }
     invalidateDashboard_();
   } finally {
     lock.releaseLock();
   }
 
+  let alertState = '';
   if (isFail) {
-    try {
-      notifyDamaged_({
-        equipment: eq, inspector: user.name, time: inspectedAt, failed: failed,
-        remarks: remarks, method: method, photoBlob: photoBlob,
-      });
-    } catch (e) {
-      console.error('notifyDamaged_ failed: ' + e);
-    }
+    alertState = sendDamagedAlert_(uuid, {
+      equipment: eq, inspector: user.name, time: inspectedAt, failed: failed,
+      remarks: remarks, method: method, photoBlob: photoBlob,
+    });
   }
 
   const status = isFail ? STATUS.DAMAGED : (ym_(inspectedAt) === ym_(now) ? STATUS.NORMAL : STATUS.PENDING);
-  return { saved: true, duplicate: false, status: status, time: isoTz_(inspectedAt) };
+  return { saved: true, duplicate: false, status: status, time: isoTz_(inspectedAt), alert: alertState };
 }
 
 function findInspectionRow_(sh, uuid) {
