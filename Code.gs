@@ -168,11 +168,12 @@ function normalizeId_(v) {
   return str_(v).toUpperCase();
 }
 
-/** กัน Formula Injection: ข้อความที่ขึ้นต้นด้วย = + - @ จะถูกชีตตีความเป็นสูตร */
-function safeCell_(v) {
-  const s = str_(v);
-  return /^[=+\-@\t\r]/.test(s) ? "'" + s : s;
-}
+/*
+ * กัน Formula Injection: คอลัมน์ข้อความที่ผู้ใช้กรอก (ชื่อ, ข้อที่ไม่ผ่าน, หมายเหตุ) ถูกตั้งรูปแบบเป็น
+ * "ข้อความล้วน" (@) ใน Setup.gs ชีตจึงไม่ตีความเป็นสูตร และไม่ต้องเติม ' นำหน้า
+ * (การเติม ' ในเซลล์ข้อความล้วนจะกลายเป็นตัวอักษรจริงที่ผู้ใช้เห็น)
+ * ถ้าเพิ่มคอลัมน์ข้อความใหม่ ต้องเพิ่มใน setNumberFormat('@') ของ setup() ด้วย
+ */
 
 function cleanText_(v, maxLen) {
   return str_(v).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').slice(0, maxLen);

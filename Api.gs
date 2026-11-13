@@ -119,9 +119,9 @@ function apiSubmitInspection_(user, p) {
       return { saved: true, duplicate: true, status: isFail ? STATUS.DAMAGED : STATUS.NORMAL };
     }
     sh.appendRow([
-      uuid, inspectedAt, id, user.id, safeCell_(user.name), method,
+      uuid, inspectedAt, id, user.id, user.name, method,
       isFail ? RESULT.FAIL : RESULT.PASS,
-      safeCell_(failed.join(', ')), JSON.stringify(results), safeCell_(remarks), repaired,
+      failed.join(', '), JSON.stringify(results), remarks, repaired,
       photoFile ? photoFile.getUrl() : '', photoFile ? photoFile.getId() : '', now,
     ]);
     SpreadsheetApp.flush();

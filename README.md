@@ -99,7 +99,8 @@ Web App บน Google Apps Script + Google Sheets สำหรับสแกน
 1. ผลักโฟลเดอร์ `docs/` ขึ้น GitHub แล้วเปิด **Settings → Pages → Source: Deploy from a branch → Branch: `main`, โฟลเดอร์ `/docs`** → Save
 2. รอสักครู่ จะได้ URL เช่น `https://<ชื่อบัญชี>.github.io/<ชื่อ repo>/`
 3. วาง URL นั้นในชีต Config → `SCANNER_URL` (ถ้าไม่มีแถวนี้ ให้เพิ่มแถว: คอลัมน์ A = `SCANNER_URL`, คอลัมน์ B = URL)
-4. Deploy ไฟล์ Apps Script เป็น New version ใหม่ — ปุ่ม **"เปิดตัวสแกนกล้องสด"** จะขึ้นในหน้าสแกนเมื่อกล้องในหน้านั้นเปิดไม่ได้
+4. **สำคัญ (ความปลอดภัย):** เปิด `docs/index.html` แล้วตั้งค่า `ALLOWED_APP_ID` เป็นรหัสในลิงก์ `/exec` ของระบบคุณ (ส่วนระหว่าง `/macros/s/` กับ `/exec`) แล้วผลักขึ้น GitHub ใหม่ — ถ้าปล่อยว่าง หน้าสแกนจะรับสคริปต์ของ Google ใดก็ได้ ซึ่งเปิดช่องให้ถูกหลอกกรอก PIN ในหน้าปลอม
+5. Deploy ไฟล์ Apps Script เป็น New version ใหม่ — ปุ่ม **"เปิดตัวสแกนกล้องสด"** จะขึ้นในหน้าสแกนเมื่อกล้องในหน้านั้นเปิดไม่ได้
 
 ---
 

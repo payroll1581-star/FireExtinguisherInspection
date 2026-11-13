@@ -63,6 +63,22 @@ function notifyDamaged_(r) {
     r.photoBlob ? [r.photoBlob] : null);
 }
 
+/** แจ้ง Admin เมื่อบัญชีถูกล็อกเพราะใส่ PIN ผิด (จำกัด 1 ฉบับ/ชั่วโมง กันโควตาอีเมลหมดจากการถูกโจมตีซ้ำ) */
+function notifyLockout_(user) {
+  try {
+    const cache = CacheService.getScriptCache();
+    if (cache.get('lockmail')) return;
+    cache.put('lockmail', '1', 3600);
+    const inner = '<p>บัญชี <b>' + escapeHtml_(user.name) + '</b> (' + escapeHtml_(user.id) + ') ถูกล็อก ' +
+      Math.round(APP.LOCK_SECONDS / 60) + ' นาที เพราะใส่ PIN ผิดเกิน ' + APP.MAX_PIN_FAILS + ' ครั้ง ณ ' +
+      escapeHtml_(fmtThaiDateTime_(new Date())) + '</p>' +
+      '<p>หากเจ้าของบัญชีไม่ได้เป็นคนทำ อาจมีผู้อื่นพยายามเดา PIN หากต้องการปลดล็อกทันที ให้ใช้เมนู <b>ตั้ง PIN ใหม่ / ปลดล็อก</b> ใน Google Sheet</p>';
+    sendMail_('[แจ้งเตือน] บัญชีผู้ใช้ถูกล็อก: ' + user.name, emailShell_('🔒 บัญชีผู้ใช้ถูกล็อก', '#EF6C00', inner));
+  } catch (e) {
+    console.error('notifyLockout_ failed: ' + e);
+  }
+}
+
 function expiryText_(it) {
   return it.expiryDetails.map(function (d) {
     const label = d.kind === 'service' ? 'บำรุงรักษา' : 'หมดอายุ/ทดสอบแรงดัน';

@@ -93,7 +93,7 @@ function listUsersPublic_() {
 function login_(p) {
   const userId = str_(p.userId).toUpperCase();
   const pin = str_(p.pin);
-  if (!userId) throw appError_('VALIDATION', 'กรุณาเลือกชื่อผู้ใช้');
+  if (!userId || !/^[A-Z0-9_-]{1,40}$/.test(userId)) throw appError_('VALIDATION', 'กรุณาเลือกชื่อผู้ใช้');
   if (!isValidPin_(pin)) throw appError_('VALIDATION', 'PIN ต้องเป็นตัวเลข 4–6 หลัก');
 
   const cache = CacheService.getScriptCache();
@@ -107,20 +107,29 @@ function login_(p) {
   const ok = !!user && safeEqual_(computed, user.hash);
 
   if (!ok) {
+    // รหัสผู้ใช้ที่ไม่มีอยู่จริงไม่นับครั้งผิด (กันการเติม cache และกันการล็อกชื่อสมมติ)
+    if (!user) throw appError_('AUTH_FAIL', 'PIN ไม่ถูกต้อง');
     const lock = LockService.getScriptLock();
-    lock.tryLock(3000);
+    const gotLock = lock.tryLock(3000); // ถ้าไม่ได้ lock ก็นับต่อแบบ best-effort ดีกว่าปล่อยให้ลองไม่จำกัด
+    let n = 0;
+    let lockedNow = false;
     try {
-      const n = Number(cache.get(failKey) || 0) + 1;
+      n = Number(cache.get(failKey) || 0) + 1;
       if (n >= APP.MAX_PIN_FAILS) {
         cache.put(lockKey, '1', APP.LOCK_SECONDS);
         cache.remove(failKey);
-        throw appError_('LOCKED', 'ใส่ PIN ผิดเกิน ' + APP.MAX_PIN_FAILS + ' ครั้ง บัญชีถูกล็อก 15 นาที');
+        lockedNow = true;
+      } else {
+        cache.put(failKey, String(n), APP.LOCK_SECONDS);
       }
-      cache.put(failKey, String(n), APP.LOCK_SECONDS);
-      throw appError_('AUTH_FAIL', 'PIN ไม่ถูกต้อง (ลองได้อีก ' + (APP.MAX_PIN_FAILS - n) + ' ครั้ง)');
     } finally {
-      try { lock.releaseLock(); } catch (e) { /* ไม่ได้ถือ lock */ }
+      if (gotLock) { try { lock.releaseLock(); } catch (e) { /* ignore */ } }
     }
+    if (lockedNow) {
+      notifyLockout_(user);
+      throw appError_('LOCKED', 'ใส่ PIN ผิดเกิน ' + APP.MAX_PIN_FAILS + ' ครั้ง บัญชีถูกล็อก 15 นาที');
+    }
+    throw appError_('AUTH_FAIL', 'PIN ไม่ถูกต้อง (ลองได้อีก ' + (APP.MAX_PIN_FAILS - n) + ' ครั้ง)');
   }
 
   cache.remove(failKey);
@@ -241,7 +250,7 @@ function addUser_(name, role, pin, forcedId) {
   const sh = sheet_(APP.SHEETS.USERS);
   const id = forcedId || nextUserId_();
   const salt = Utilities.getUuid();
-  sh.appendRow([id, safeCell_(cleanText_(name, 100)), role, salt, hashPin_(pin, salt), true, new Date()]);
+  sh.appendRow([id, cleanText_(name, 100), role, salt, hashPin_(pin, salt), true, new Date()]);
   invalidateUsers_();
   return id;
 }

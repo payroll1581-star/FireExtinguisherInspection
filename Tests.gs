@@ -128,10 +128,17 @@ function runAllTests_() {
     eq(verifyTokenSignature_(expired, secret, Date.now()), null);
     eq(verifyTokenSignature_('garbage', secret, Date.now()), null);
   });
-  test('กัน Formula Injection', function () {
-    eq(safeCell_('=IMPORTXML("http://x")'), "'=IMPORTXML(\"http://x\")");
-    eq(safeCell_('+1'), "'+1");
-    eq(safeCell_('ปกติ'), 'ปกติ');
+  test('คอลัมน์ข้อความที่ผู้ใช้กรอกเป็นข้อความล้วน (กัน Formula Injection)', function () {
+    const sh = sheet_(APP.SHEETS.INSPECTIONS);
+    // คอลัมน์ E (ชื่อผู้ตรวจ) H (ข้อที่ไม่ผ่าน) J (หมายเหตุ) ต้องเป็น "@" — ดู setup()
+    ['E2', 'H2', 'J2'].forEach(function (a) { eq(sh.getRange(a).getNumberFormat(), '@', 'รูปแบบเซลล์ ' + a); });
+    const us = sheet_(APP.SHEETS.USERS);
+    eq(us.getRange('B2').getNumberFormat(), '@', 'รูปแบบเซลล์ Users!B2');
+  });
+  test('login: รหัสผู้ใช้ที่ไม่ถูกรูปแบบถูกปฏิเสธ', function () {
+    let code = '';
+    try { login_({ userId: 'x'.repeat(300), pin: '123456' }); } catch (e) { code = e.code; }
+    eq(code, 'VALIDATION');
   });
   test('รหัสถังจาก URL parameter ถูกกรอง', function () {
     eq(sanitizeIdParam_('fe-001'), 'FE-001');

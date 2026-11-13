@@ -84,11 +84,18 @@
   try { var saved = localStorage.getItem('fe_scan_lang'); if (!qs.get('lang') && (saved === 'en' || saved === 'th')) lang = saved; } catch (e) { /* ignore */ }
 
   /* ลิงก์ Web App ที่ยอมรับ: https เท่านั้น และต้องเป็น script.google.com/.../macros/s/<id>/exec */
+  /* รหัส deployment ของระบบหน่วยงานนี้ (ส่วน /macros/s/<รหัส>/exec) — ต้องตั้งค่าก่อนใช้งานจริง
+     เมื่อตั้งแล้ว หน้านี้จะส่งต่อไปเฉพาะระบบนี้ ลิงก์ ?app= หรือ QR ที่ชี้ไปสคริปต์อื่นจะถูกปฏิเสธ
+     (กันการหลอกให้กรอก PIN ในหน้าปลอม) ปล่อยว่างจะรับสคริปต์ของ Google ใดก็ได้ — ไม่ปลอดภัย */
+  var ALLOWED_APP_ID = '';
+
   function appUrl(text) {
     var u;
     try { u = new URL(String(text || '').trim()); } catch (e) { return null; }
     if (u.protocol !== 'https:' || u.hostname !== 'script.google.com') return null;
-    if (!/^\/(a\/macros\/[\w.-]+\/|macros\/)s\/[\w-]+\/(exec|dev)$/.test(u.pathname)) return null;
+    var m = u.pathname.match(/^\/(?:a\/macros\/[\w.-]+\/|macros\/)s\/([\w-]+)\/(?:exec|dev)$/);
+    if (!m) return null;
+    if (ALLOWED_APP_ID && m[1] !== ALLOWED_APP_ID) return null;
     return u;
   }
 
@@ -177,6 +184,8 @@
     return new Promise(function (resolve, reject) {
       var sc = document.createElement('script');
       sc.src = 'https://unpkg.com/jsqr@1.4.0/dist/jsQR.js';
+      sc.integrity = 'sha384-b5Ya4Bq3qCyz39m2ISh+4DxjAIljdeFwK/BsXLuj9gugaNwAcj/ia15fxNZL9Nlx';
+      sc.crossOrigin = 'anonymous';
       sc.onload = function () { window.jsQR ? resolve() : reject(new Error('jsQR missing')); };
       sc.onerror = function () { reject(new Error('jsQR load failed')); };
       document.head.appendChild(sc);

@@ -24,6 +24,7 @@
   function expiryText(ex) { return ({ EXPIRED: 1, SOON: 1 })[ex] ? t('ex.' + ex) : ''; }
   var EXPIRY_ICON = { EXPIRED: 'ban', SOON: 'hourglass' };
   var QR_LIB = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+  var QR_LIB_SRI = 'sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU';
 
   var state = {
     token: null, user: null, cache: null, view: '',
@@ -1073,6 +1074,8 @@
       qrLibPromise = new Promise(function (resolve, reject) {
         var s = document.createElement('script');
         s.src = QR_LIB;
+        s.integrity = QR_LIB_SRI;
+        s.crossOrigin = 'anonymous';
         s.onload = resolve;
         s.onerror = function () { qrLibPromise = null; reject(new Error(t('print.libFail'))); };
         document.head.appendChild(s);
