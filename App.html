@@ -907,18 +907,33 @@
     loadDashboard();
   }
 
-  function loadDashboard() {
-    $('dash-updated').textContent = state.dash ? $('dash-updated').textContent : t('common.loading');
-    return call('getDashboard').then(function (d) {
+  /* force = true เมื่อผู้ใช้กดปุ่มรีเฟรช: ข้าม cache ของ server และแสดงสถานะกำลังโหลด */
+  function loadDashboard(force) {
+    force = force === true;
+    var btn = $('dash-refresh');
+    if (force) {
+      if (btn.disabled) return Promise.resolve();
+      btn.disabled = true;
+      $('dash-updated').textContent = t('common.loading');
+    } else if (!state.dash) {
+      $('dash-updated').textContent = t('common.loading');
+    }
+    var failed = false;
+    return call('getDashboard', { refresh: force }).then(function (d) {
       state.dash = d;
       if (state.view === 'dashboard') renderDashboard();
     }).catch(function (err) {
       if (err.code === 'NETWORK' && state.cache && state.cache.equipment) {
         state.dash = { items: state.cache.equipment, generatedAt: state.cache.generatedAt, offline: true };
         if (state.view === 'dashboard') renderDashboard();
-      } else if (err.code !== 'AUTH') {
-        toast(err.message);
+      } else {
+        failed = true;
+        if (err.code !== 'AUTH') toast(err.message);
       }
+    }).then(function () {
+      btn.disabled = false;
+      // รีเฟรชไม่สำเร็จ: คืนข้อความ "อัปเดตล่าสุด" เดิม แทนที่จะค้างที่ "กำลังโหลด"
+      if (failed && state.dash && state.view === 'dashboard') renderDashboard();
     });
   }
 
@@ -1225,7 +1240,7 @@
         flushQueue();
       }
     });
-    $('dash-refresh').addEventListener('click', loadDashboard);
+    $('dash-refresh').addEventListener('click', function () { loadDashboard(true); });
     $('f-building').addEventListener('change', function (e) { state.dashFilter.building = e.target.value; state.dashFilter.floor = ''; renderDashboard(); });
     $('f-floor').addEventListener('change', function (e) { state.dashFilter.floor = e.target.value; renderDashboard(); });
     $('view-dashboard').addEventListener('click', function (e) {

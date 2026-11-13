@@ -187,8 +187,9 @@ function getPhotoFolder_() {
   return DriveApp.getFolderById(id);
 }
 
-function apiGetDashboard_(user) {
-  const d = getDashboardData_();
+function apiGetDashboard_(user, p) {
+  // ปุ่มรีเฟรชส่ง refresh:true เพื่อข้าม cache 30 วินาที (ผู้ตรวจต้องเห็นผลล่าสุดทันที)
+  const d = getDashboardData_(!!(p && p.refresh === true));
   const out = {
     generatedAt: d.generatedAt, month: d.month, warnDays: d.warnDays,
     items: d.items, summary: d.summary,
